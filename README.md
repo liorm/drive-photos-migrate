@@ -29,17 +29,32 @@ A web application built with Next.js to help you seamlessly upload files from yo
 .
 ├── app/                      # Next.js App Router
 │   ├── api/
-│   │   └── auth/
-│   │       └── [...nextauth]/  # Auth.js API routes
+│   │   ├── auth/
+│   │   │   └── [...nextauth]/  # Auth.js API routes
+│   │   └── drive/
+│   │       └── files/        # Drive files listing endpoint
 │   ├── auth/
 │   │   └── signin/           # Custom sign-in page
-│   ├── layout.tsx            # Root layout with header
-│   ├── page.tsx              # Home page (protected)
+│   ├── drive/
+│   │   └── page.tsx          # Drive browser page
+│   ├── layout.tsx            # Root layout with sidebar & navbar
+│   ├── page.tsx              # Dashboard home page
 │   └── globals.css           # Tailwind CSS directives
 ├── components/               # Reusable React components
+│   ├── drive/
+│   │   ├── FileBrowser.tsx   # Main file browser container
+│   │   ├── FileGrid.tsx      # Grid layout for files/folders
+│   │   ├── FileItem.tsx      # Individual file card
+│   │   └── FolderItem.tsx    # Folder navigation card
+│   ├── AuthButton.tsx        # Client-side auth button
 │   ├── Header.tsx            # Header with user info
-│   └── AuthButton.tsx        # Client-side auth button
+│   ├── Navbar.tsx            # Top navigation bar
+│   ├── Sidebar.tsx           # Sidebar navigation menu
+│   └── Providers.tsx         # Client-side providers wrapper
+├── lib/
+│   └── google-drive.ts       # Drive API service layer
 ├── types/                    # TypeScript type definitions
+│   ├── google-drive.ts       # Drive file/folder types
 │   └── next-auth.d.ts        # Extended session types
 ├── auth.ts                   # Auth.js v5 configuration
 ├── middleware.ts             # Route protection
@@ -111,12 +126,32 @@ A web application built with Next.js to help you seamlessly upload files from yo
   - All routes except `/auth/*` require authentication
   - Automatic redirect to sign-in page for unauthenticated users
 
-### **Phase 2: Google Drive Integration**
+### **Phase 2: Google Drive Integration** ✅ COMPLETED
 
-- \[ \] **Create Drive API Service:** Write functions to communicate with the Google Drive API.
-- \[ \] **Fetch Files & Folders:** Implement logic to list files and folders from the user's Drive.
-- \[ \] **Build File Browser UI:** Create components to display and navigate Drive contents.
-- \[ \] **Implement File Selection:** Allow users to select one or more files to upload.
+- ✅ **Create Drive API Service:** Implemented `lib/google-drive.ts` with functions to communicate with Google Drive API
+  - `listDriveFiles()` - Lists files and folders with pagination support
+  - `getDriveFile()` - Retrieves file metadata by ID
+  - `getFolderPath()` - Builds breadcrumb trail from root to current folder
+  - Filters for supported media types (images and videos only)
+- ✅ **Fetch Files & Folders:** Created server-side API endpoint `/api/drive/files`
+  - Accepts `folderId` and `pageToken` query parameters
+  - Returns files, folders, breadcrumb path, and pagination token
+  - Implements proper error handling and authentication checks
+- ✅ **Build File Browser UI:** Created comprehensive component system
+  - `FileBrowser` - Main container with breadcrumb navigation, selection controls, and state management
+  - `FileGrid` - Responsive grid layout that separates folders from files
+  - `FileItem` - File cards with thumbnails, metadata, and selection checkboxes
+  - `FolderItem` - Clickable folder cards for navigation
+  - Empty states, loading states, and error handling
+- ✅ **Implement File Selection:** Multi-file selection with full controls
+  - Individual file selection via checkboxes
+  - "Select All" and "Deselect All" batch operations
+  - Selection count display
+  - Selection state cleared when navigating to new folders
+- ✅ **Browser Navigation Support:** URL-based navigation with browser back/forward support
+  - Current folder tracked in URL query parameter (`?folder=<id>`)
+  - Breadcrumb navigation updates URL
+  - Browser back/forward buttons work correctly
 
 ### **Phase 3: Google Photos Integration & Upload Logic**
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { DriveFile, DriveFolder, BreadcrumbItem } from '@/types/google-drive';
 import { FileGrid } from './FileGrid';
 import {
@@ -23,7 +24,12 @@ interface ApiResponse {
 }
 
 export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
-  const [currentFolderId, setCurrentFolderId] = useState(initialFolderId);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Use URL as source of truth for current folder
+  const currentFolderId = searchParams.get('folder') || initialFolderId;
+
   const [items, setItems] = useState<(DriveFile | DriveFolder)[]>([]);
   const [folderPath, setFolderPath] = useState<BreadcrumbItem[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
@@ -74,7 +80,14 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
 
   // Navigate to folder
   const handleNavigate = (folderId: string) => {
-    setCurrentFolderId(folderId);
+    // Update URL to reflect current folder
+    const url = new URL(window.location.href);
+    if (folderId === 'root') {
+      url.searchParams.delete('folder');
+    } else {
+      url.searchParams.set('folder', folderId);
+    }
+    router.push(url.pathname + url.search);
   };
 
   // Toggle file selection

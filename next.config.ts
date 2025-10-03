@@ -1,6 +1,10 @@
 import type { NextConfig } from 'next';
 
+// Allow overriding Next.js output dir via NEXT_DIST_DIR for parallel dev/build
+// Default keeps the standard `.next` so behavior is unchanged when the env var is not set.
 const nextConfig: NextConfig = {
+  // Use an env var so you can run dev and build in parallel without clobbering the same .next
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   images: {
     remotePatterns: [
       {
