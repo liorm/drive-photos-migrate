@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { signIn, signOut } from "next-auth/react";
-import { useSession } from "next-auth/react";
+import { signIn, signOut } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 
 export default function AuthButton() {
   const { data: session } = useSession();
@@ -10,7 +10,7 @@ export default function AuthButton() {
     return (
       <button
         onClick={() => signOut()}
-        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+        className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
       >
         Sign Out
       </button>
@@ -19,8 +19,8 @@ export default function AuthButton() {
 
   return (
     <button
-      onClick={() => signIn("google")}
-      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+      onClick={() => signIn('google')}
+      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
     >
       Sign In with Google
     </button>

@@ -1,11 +1,11 @@
-import { signIn } from "@/auth";
+import { signIn } from '@/auth';
 
 export default function SignInPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
+        <div className="mb-8 text-center">
+          <h1 className="mb-2 text-3xl font-bold text-gray-800">
             Welcome Back
           </h1>
           <p className="text-gray-600">
@@ -15,15 +15,15 @@ export default function SignInPage() {
 
         <form
           action={async () => {
-            "use server";
-            await signIn("google", { redirectTo: "/" });
+            'use server';
+            await signIn('google', { redirectTo: '/' });
           }}
         >
           <button
             type="submit"
-            className="w-full flex items-center justify-center gap-3 px-6 py-3 bg-white border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all font-medium"
+            className="flex w-full items-center justify-center gap-3 rounded-lg border-2 border-gray-300 bg-white px-6 py-3 font-medium text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50"
           >
-            <svg className="w-5 h-5" viewBox="0 0 24 24">
+            <svg className="h-5 w-5" viewBox="0 0 24 24">
               <path
                 fill="#4285F4"
                 d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -45,8 +45,8 @@ export default function SignInPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-xs text-gray-500 text-center">
-          We'll request access to your Google Drive (read-only) and Google
+        <p className="mt-6 text-center text-xs text-gray-500">
+          We&apos;ll request access to your Google Drive (read-only) and Google
           Photos (upload-only) to enable file transfers.
         </p>
       </div>

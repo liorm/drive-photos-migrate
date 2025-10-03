@@ -1,12 +1,13 @@
-import { auth } from "@/auth";
-import AuthButton from "@/components/AuthButton";
+import { auth } from '@/auth';
+import AuthButton from '@/components/AuthButton';
+import Image from 'next/image';
 
 export default async function Header() {
   const session = await auth();
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200">
-      <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+    <header className="border-b border-gray-200 bg-white shadow-sm">
+      <div className="container mx-auto flex items-center justify-between px-4 py-4">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold text-gray-800">
             Drive → Photos Uploader
@@ -17,13 +18,15 @@ export default async function Header() {
           {session?.user && (
             <div className="flex items-center gap-3">
               {session.user.image && (
-                <img
+                <Image
                   src={session.user.image}
-                  alt={session.user.name || "User"}
-                  className="w-8 h-8 rounded-full"
+                  alt={session.user.name || 'User'}
+                  width={32}
+                  height={32}
+                  className="h-8 w-8 rounded-full"
                 />
               )}
-              <span className="text-sm text-gray-700 hidden sm:block">
+              <span className="hidden text-sm text-gray-700 sm:block">
                 {session.user.email}
               </span>
             </div>

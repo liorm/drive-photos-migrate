@@ -1,10 +1,10 @@
-import type { Metadata } from "next";
-import "./globals.css";
-import Header from "@/components/Header";
+import type { Metadata } from 'next';
+import './globals.css';
+import Header from '@/components/Header';
 
 export const metadata: Metadata = {
-  title: "Google Drive to Photos Uploader",
-  description: "Upload files from Google Drive to Google Photos seamlessly",
+  title: 'Google Drive to Photos Uploader',
+  description: 'Upload files from Google Drive to Google Photos seamlessly',
 };
 
 export default function RootLayout({
