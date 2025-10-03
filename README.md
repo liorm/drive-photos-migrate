@@ -62,7 +62,7 @@ A web application built with Next.js to help you seamlessly upload files from yo
 2. **Install dependencies:**
 
    ```bash
-   npm install
+   pnpm install
    ```
 
 3. **Google Cloud Platform Setup:**
@@ -89,7 +89,7 @@ A web application built with Next.js to help you seamlessly upload files from yo
 5. **Run the development server:**
 
    ```bash
-   npm run dev
+   pnpm dev
    ```
 
    Open [http://localhost:3000](http://localhost:3000) in your browser.
