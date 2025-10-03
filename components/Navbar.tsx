@@ -8,17 +8,17 @@ interface NavbarProps {
 
 export default function Navbar({ onMenuClick }: NavbarProps) {
   return (
-    <nav className="bg-white border-b border-gray-200 fixed w-full z-30 top-0">
+    <nav className="fixed top-0 z-30 w-full border-b border-gray-200 bg-white">
       <div className="px-3 py-3 lg:px-5 lg:pl-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center justify-start">
             <button
               onClick={onMenuClick}
-              className="inline-flex items-center p-2 text-sm text-gray-500 rounded-lg lg:hidden hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200"
+              className="inline-flex items-center rounded-lg p-2 text-sm text-gray-500 hover:bg-gray-100 focus:ring-2 focus:ring-gray-200 focus:outline-none lg:hidden"
             >
-              <Menu className="w-6 h-6" />
+              <Menu className="h-6 w-6" />
             </button>
-            <span className="self-center text-xl font-semibold sm:text-2xl whitespace-nowrap ml-2">
+            <span className="ml-2 self-center text-xl font-semibold whitespace-nowrap sm:text-2xl">
               Google Drive Photo Migrator
             </span>
           </div>
