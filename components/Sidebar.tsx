@@ -1,15 +1,6 @@
 'use client';
 
-import {
-  Home,
-  Upload,
-  FolderOpen,
-  Settings,
-  X,
-  LogOut,
-  LogIn,
-  Menu,
-} from 'lucide-react';
+import { Home, FolderOpen, X, LogOut, LogIn, Menu } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession, signIn, signOut } from 'next-auth/react';
