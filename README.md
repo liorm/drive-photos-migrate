@@ -13,78 +13,100 @@ A web application built with Next.js to help you seamlessly upload files from yo
 
 ## **Technical Stack**
 
-* **Framework:** [Next.js](https://nextjs.org/) (React)  
-* **Authentication:** [NextAuth.js](https://next-auth.js.org/) for Google OAuth 2.0  
-* **Styling:** [Tailwind CSS](https://tailwindcss.com/)  
-* **Google APIs:**  
-  * [Google Drive API v3](https://developers.google.com/drive/api/v3/about-sdk)  
-  * [Google Photos Library API](https://developers.google.com/photos/library/guides/overview)  
-* **Database:** [lowdb](https://github.com/typicode/lowdb) (for local development, using a simple JSON file). Firestore is a good option for a future production deployment.  
+* **Framework:** [Next.js 15](https://nextjs.org/) with App Router (React 19)
+* **Language:** TypeScript
+* **Authentication:** [Auth.js v5 (NextAuth.js)](https://authjs.dev/) for Google OAuth 2.0
+* **Styling:** [Tailwind CSS v4](https://tailwindcss.com/)
+* **Google APIs:**
+  * [Google Drive API v3](https://developers.google.com/drive/api/v3/about-sdk) (read-only scope)
+  * [Google Photos Library API](https://developers.google.com/photos/library/guides/overview) (append-only scope)
+* **Database:** [lowdb v7](https://github.com/typicode/lowdb) (for local development, using a simple JSON file). Firestore is a good option for a future production deployment.
 * **Deployment:** Vercel
 
 ## **Project Structure**
 
-.  
-├── components/         \# Reusable React components (e.g., FileBrowser, UploadStatus)  
-├── data/               \# Will contain our local JSON database  
-│   └── db.json  
-├── pages/  
-│   ├── api/            \# API routes for backend logic  
-│   │   ├── auth/       \# NextAuth.js routes  
-│   │   ├── drive/      \# API routes for Google Drive actions  
-│   │   └── photos/     \# API routes for Google Photos actions  
-│   ├── \_app.js  
-│   ├── \_document.js  
-│   └── index.js        \# Main application page  
-├── public/             \# Static assets  
-├── services/           \# Modules for interacting with external APIs (Google, Database)  
-├── styles/             \# Global styles  
-├── utils/              \# Utility functions  
-├── .env.local          \# Environment variables (API keys, etc.)  
-├── next.config.js  
-└── package.json
+```
+.
+├── app/                      # Next.js App Router
+│   ├── api/
+│   │   └── auth/
+│   │       └── [...nextauth]/  # Auth.js API routes
+│   ├── auth/
+│   │   └── signin/           # Custom sign-in page
+│   ├── layout.tsx            # Root layout with header
+│   ├── page.tsx              # Home page (protected)
+│   └── globals.css           # Tailwind CSS directives
+├── components/               # Reusable React components
+│   ├── Header.tsx            # Header with user info
+│   └── AuthButton.tsx        # Client-side auth button
+├── types/                    # TypeScript type definitions
+│   └── next-auth.d.ts        # Extended session types
+├── auth.ts                   # Auth.js v5 configuration
+├── middleware.ts             # Route protection
+├── .env.local.example        # Environment variable template
+├── next.config.ts            # Next.js configuration
+├── tailwind.config.ts        # Tailwind CSS v4 configuration
+├── tsconfig.json             # TypeScript configuration
+└── package.json              # Dependencies and scripts
+```
 
 ## **Setup and Installation**
 
-1. **Clone the repository:**  
-   git clone \<repository-url\>  
-   cd \<repository-name\>
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd google-photos
+   ```
 
-2. **Install dependencies:**  
-   npm install  
-   \# or  
-   yarn install
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
 
-3. **Google Cloud Platform Setup:**  
-   * Go to the [Google Cloud Console](https://console.cloud.google.com/).  
-   * Create a new project.  
-   * Enable the **Google Drive API** and **Google Photos Library API**.  
-   * Go to "Credentials", create an "OAuth client ID" for a "Web application".  
-   * Add http://localhost:3000 to "Authorized JavaScript origins".  
-   * Add http://localhost:3000/api/auth/callback/google to "Authorized redirect URIs".  
-   * Copy the "Client ID" and "Client Secret".  
-4. **Environment Variables:**  
-   * Create a .env.local file in the root of the project.  
-   * Add your Google credentials and a NEXTAUTH\_SECRET.
+3. **Google Cloud Platform Setup:**
+   * Go to the [Google Cloud Console](https://console.cloud.google.com/)
+   * Create a new project
+   * Enable the **Google Drive API** and **Google Photos Library API**
+   * Go to "Credentials", create an "OAuth client ID" for a "Web application"
+   * Add `http://localhost:3000` to "Authorized JavaScript origins"
+   * Add `http://localhost:3000/api/auth/callback/google` to "Authorized redirect URIs"
+   * Copy the "Client ID" and "Client Secret"
 
-GOOGLE\_CLIENT\_ID=your-google-client-id  
-GOOGLE\_CLIENT\_SECRET=your-google-client-secret  
-NEXTAUTH\_URL=http://localhost:3000  
-NEXTAUTH\_SECRET=a-secure-random-string
+4. **Environment Variables:**
+   * Copy the example file: `cp .env.local.example .env.local`
+   * Generate a secret: `openssl rand -base64 32`
+   * Edit `.env.local` and add your credentials:
 
-5. **Run the development server:**  
-   npm run dev  
-   \# or  
-   yarn dev
+   ```bash
+   AUTH_SECRET=<generated-secret>
+   NEXTAUTH_URL=http://localhost:3000
+   AUTH_GOOGLE_ID=<your-client-id>.apps.googleusercontent.com
+   AUTH_GOOGLE_SECRET=<your-client-secret>
+   ```
+
+5. **Run the development server:**
+   ```bash
+   npm run dev
+   ```
+
+   Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## **Development Roadmap**
 
-### **Phase 1: Authentication & Basic UI**
+### **Phase 1: Authentication & Basic UI** ✅ COMPLETED
 
-* \[ \] **Setup Next.js & Tailwind CSS:** Initialize the project.  
-* \[ \] **Integrate NextAuth.js:** Implement Google Sign-In.  
-* \[ \] **Create Layout:** Build the main application shell (header, sidebar, content area).  
-* \[ \] **Protected Routes:** Ensure users must be logged in to access the main features.
+* ✅ **Setup Next.js & Tailwind CSS:** Initialized Next.js 15 with TypeScript, App Router, and Tailwind CSS v4
+* ✅ **Integrate NextAuth.js:** Implemented Auth.js v5 with Google OAuth 2.0
+  * Configured Google Drive API (read-only) and Google Photos Library API (append-only) scopes
+  * Created custom sign-in page with Google branding
+  * Set up JWT and session callbacks to store access tokens
+* ✅ **Create Layout:** Built responsive layout with:
+  * Header component with user profile display
+  * Client-side authentication button
+  * Tailwind CSS styling with dark mode support
+* ✅ **Protected Routes:** Implemented middleware-based route protection
+  * All routes except `/auth/*` require authentication
+  * Automatic redirect to sign-in page for unauthenticated users
 
 ### **Phase 2: Google Drive Integration**
 

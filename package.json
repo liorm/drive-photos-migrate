@@ -1,0 +1,32 @@
+{
+  "name": "google-photos",
+  "version": "1.0.0",
+  "description": "A web application built with Next.js to help you seamlessly upload files from your Google Drive to your Google Photos library. It keeps track of uploaded files to prevent duplicates.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "googleapis": "^161.0.0",
+    "lowdb": "^7.0.1",
+    "next": "^15.5.4",
+    "next-auth": "^5.0.0-beta.29",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.14",
+    "@types/node": "^24.6.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.14",
+    "typescript": "^5.9.3"
+  }
+}
