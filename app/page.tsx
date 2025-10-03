@@ -1,4 +1,5 @@
 import { auth } from '@/auth';
+import Link from 'next/link';
 
 export default async function Home() {
   const session = await auth();
@@ -91,7 +92,10 @@ export default async function Home() {
           Quick Actions
         </h2>
         <div className="grid gap-4 md:grid-cols-2">
-          <button className="flex items-center gap-4 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-blue-500 hover:bg-blue-50">
+          <Link
+            href="/drive"
+            className="flex items-center gap-4 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-blue-500 hover:bg-blue-50"
+          >
             <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100">
               <svg
                 className="h-6 w-6 text-blue-600"
@@ -113,7 +117,7 @@ export default async function Home() {
                 Select files from Google Drive
               </p>
             </div>
-          </button>
+          </Link>
 
           <button className="flex items-center gap-4 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-green-500 hover:bg-green-50">
             <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100">
