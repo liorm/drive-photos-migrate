@@ -13,7 +13,7 @@ A web application built with Next.js to help you seamlessly upload files from yo
 
 ## **Technical Stack**
 
-- **Framework:** [Next.js 15](https://nextjs.org/) with App Router (React 19)
+- **Framework:** [Next.js 15](https://nextjs.org/) with App Router (React 19\)
 - **Language:** TypeScript
 - **Authentication:** [Auth.js v5 (NextAuth.js)](https://authjs.dev/) for Google OAuth 2.0
 - **Styling:** [Tailwind CSS v4](https://tailwindcss.com/)
@@ -25,157 +25,118 @@ A web application built with Next.js to help you seamlessly upload files from yo
 
 ## **Project Structure**
 
-```
-.
-├── app/                      # Next.js App Router
-│   ├── api/
-│   │   ├── auth/
-│   │   │   └── [...nextauth]/  # Auth.js API routes
-│   │   └── drive/
-│   │       └── files/        # Drive files listing endpoint
-│   ├── auth/
-│   │   └── signin/           # Custom sign-in page
-│   ├── drive/
-│   │   └── page.tsx          # Drive browser page
-│   ├── layout.tsx            # Root layout with sidebar & navbar
-│   ├── page.tsx              # Dashboard home page
-│   └── globals.css           # Tailwind CSS directives
-├── components/               # Reusable React components
-│   ├── drive/
-│   │   ├── FileBrowser.tsx   # Main file browser container
-│   │   ├── FileGrid.tsx      # Grid layout for files/folders
-│   │   ├── FileItem.tsx      # Individual file card
-│   │   └── FolderItem.tsx    # Folder navigation card
-│   ├── AuthButton.tsx        # Client-side auth button
-│   ├── Header.tsx            # Header with user info
-│   ├── Navbar.tsx            # Top navigation bar
-│   ├── Sidebar.tsx           # Sidebar navigation menu
-│   └── Providers.tsx         # Client-side providers wrapper
-├── lib/
-│   └── google-drive.ts       # Drive API service layer
-├── types/                    # TypeScript type definitions
-│   ├── google-drive.ts       # Drive file/folder types
-│   └── next-auth.d.ts        # Extended session types
-├── auth.ts                   # Auth.js v5 configuration
-├── middleware.ts             # Route protection
-├── .env.local.example        # Environment variable template
-├── next.config.ts            # Next.js configuration
-├── tailwind.config.ts        # Tailwind CSS v4 configuration
-├── tsconfig.json             # TypeScript configuration
-└── package.json              # Dependencies and scripts
-```
+.  
+├── app/ \# Next.js App Router  
+│ ├── api/  
+│ │ ├── auth/  
+│ │ │ └── \[...nextauth\]/ \# Auth.js API routes  
+│ │ └── drive/  
+│ │ └── files/ \# Drive files listing endpoint  
+│ ├── auth/  
+│ │ └── signin/ \# Custom sign-in page  
+│ ├── drive/  
+│ │ └── page.tsx \# Drive browser page  
+│ ├── layout.tsx \# Root layout with sidebar & navbar  
+│ ├── page.tsx \# Dashboard home page  
+│ └── globals.css \# Tailwind CSS directives  
+├── components/ \# Reusable React components  
+│ ├── drive/  
+│ │ ├── FileBrowser.tsx \# Main file browser container  
+│ │ ├── FileGrid.tsx \# Grid layout for files/folders  
+│ │ ├── FileItem.tsx \# Individual file card  
+│ │ └── FolderItem.tsx \# Folder navigation card  
+│ ├── AuthButton.tsx \# Client-side auth button  
+│ ├── Header.tsx \# Header with user info  
+│ ├── Navbar.tsx \# Top navigation bar  
+│ ├── Sidebar.tsx \# Sidebar navigation menu  
+│ └── Providers.tsx \# Client-side providers wrapper  
+├── lib/  
+│ └── google-drive.ts \# Drive API service layer  
+├── types/ \# TypeScript type definitions  
+│ ├── google-drive.ts \# Drive file/folder types  
+│ └── next-auth.d.ts \# Extended session types  
+├── auth.ts \# Auth.js v5 configuration  
+├── middleware.ts \# Route protection  
+├── .env.local.example \# Environment variable template  
+├── next.config.ts \# Next.js configuration  
+├── tailwind.config.ts \# Tailwind CSS v4 configuration  
+├── tsconfig.json \# TypeScript configuration  
+└── package.json \# Dependencies and scripts
 
 ## **Setup and Installation**
 
-1. **Clone the repository:**
-
-   ```bash
-   git clone <repository-url>
+1. **Clone the repository:**  
+   git clone \<repository-url\>  
    cd google-photos
-   ```
 
-2. **Install dependencies:**
-
-   ```bash
+2. **Install dependencies:**  
    pnpm install
-   ```
 
 3. **Google Cloud Platform Setup:**
    - Go to the [Google Cloud Console](https://console.cloud.google.com/)
    - Create a new project
    - Enable the **Google Drive API** and **Google Photos Library API**
    - Go to "Credentials", create an "OAuth client ID" for a "Web application"
-   - Add `http://localhost:3000` to "Authorized JavaScript origins"
-   - Add `http://localhost:3000/api/auth/callback/google` to "Authorized redirect URIs"
+   - Add http://localhost:3000 to "Authorized JavaScript origins"
+   - Add http://localhost:3000/api/auth/callback/google to "Authorized redirect URIs"
    - Copy the "Client ID" and "Client Secret"
-
 4. **Environment Variables:**
-   - Copy the example file: `cp .env.local.example .env.local`
-   - Generate a secret: `openssl rand -base64 32`
-   - Edit `.env.local` and add your credentials:
+   - Copy the example file: cp .env.local.example .env.local
+   - Generate a secret: openssl rand \-base64 32
+   - Edit .env.local and add your credentials:
 
-   ```bash
-   AUTH_SECRET=<generated-secret>
-   NEXTAUTH_URL=http://localhost:3000
-   AUTH_GOOGLE_ID=<your-client-id>.apps.googleusercontent.com
-   AUTH_GOOGLE_SECRET=<your-client-secret>
-   ```
+AUTH_SECRET=\<generated-secret\>  
+NEXTAUTH_URL=http://localhost:3000  
+AUTH_GOOGLE_ID=\<your-client-id\>.apps.googleusercontent.com  
+AUTH_GOOGLE_SECRET=\<your-client-secret\>
 
-5. **Run the development server:**
-
-   ```bash
+5. **Run the development server:**  
    pnpm dev
-   ```
 
-   Open [http://localhost:3000](http://localhost:3000) in your browser.
+   Open [http://localhost:3000](https://www.google.com/search?q=http://localhost:3000) in your browser.
 
 ## **Development Roadmap**
 
-### **Phase 1: Authentication & Basic UI** ✅ COMPLETED
+### **Phase 1: Authentication & Basic UI ✅ COMPLETED**
 
 - ✅ **Setup Next.js & Tailwind CSS:** Initialized Next.js 15 with TypeScript, App Router, and Tailwind CSS v4
 - ✅ **Integrate NextAuth.js:** Implemented Auth.js v5 with Google OAuth 2.0
-  - Configured Google Drive API (read-only) and Google Photos Library API (append-only) scopes
-  - Created custom sign-in page with Google branding
-  - Set up JWT and session callbacks to store access tokens
-- ✅ **Create Layout:** Built responsive layout with:
-  - Header component with user profile display
-  - Client-side authentication button
-  - Tailwind CSS styling with dark mode support
-- ✅ **Protected Routes:** Implemented middleware-based route protection
-  - All routes except `/auth/*` require authentication
-  - Automatic redirect to sign-in page for unauthenticated users
+- ✅ **Create Layout:** Built responsive layout with Header, AuthButton, and Tailwind CSS dark mode support.
+- ✅ **Protected Routes:** Implemented middleware-based route protection.
 
-### **Phase 2: Google Drive Integration** ✅ COMPLETED
+### **Phase 2: Google Drive Integration ✅ COMPLETED**
 
-- ✅ **Create Drive API Service:** Implemented `lib/google-drive.ts` with functions to communicate with Google Drive API
-  - `listDriveFiles()` - Lists files and folders with pagination support
-  - `getDriveFile()` - Retrieves file metadata by ID
-  - `getFolderPath()` - Builds breadcrumb trail from root to current folder
-  - Filters for supported media types (images and videos only)
-- ✅ **Fetch Files & Folders:** Created server-side API endpoint `/api/drive/files`
-  - Accepts `folderId` and `pageToken` query parameters
-  - Returns files, folders, breadcrumb path, and pagination token
-  - Implements proper error handling and authentication checks
-- ✅ **Build File Browser UI:** Created comprehensive component system
-  - `FileBrowser` - Main container with breadcrumb navigation, selection controls, and state management
-  - `FileGrid` - Responsive grid layout that separates folders from files
-  - `FileItem` - File cards with thumbnails, metadata, and selection checkboxes
-  - `FolderItem` - Clickable folder cards for navigation
-  - Empty states, loading states, and error handling
-- ✅ **Implement File Selection:** Multi-file selection with full controls
-  - Individual file selection via checkboxes
-  - "Select All" and "Deselect All" batch operations
-  - Selection count display
-  - Selection state cleared when navigating to new folders
-- ✅ **Browser Navigation Support:** URL-based navigation with browser back/forward support
-  - Current folder tracked in URL query parameter (`?folder=<id>`)
-  - Breadcrumb navigation updates URL
-  - Browser back/forward buttons work correctly
+- ✅ **Create Drive API Service:** Implemented lib/google-drive.ts for API communication.
+- ✅ **Fetch Files & Folders:** Created server-side API endpoint /api/drive/files.
+- ✅ **Build File Browser UI:** Created FileBrowser, FileGrid, FileItem, and FolderItem components.
+- ✅ **Implement File Selection:** Added multi-file selection with "Select All" and "Deselect All".
+- ✅ **Browser Navigation Support:** Implemented URL-based navigation for folders.
 
-### **Phase 3: Google Photos Integration & Upload Logic**
+### **Phase 3: Caching Google Drive Files & Infinite Scroll**
+
+- \[ \] **Setup Local Database for Caching:** Use lowdb to create a data/drive_cache.json file to act as the backend storage.
+- \[ \] **Define Cache Data Structure:** Design a schema to store files with rich metadata (ID, name, size, creation date, thumbnail, dimensions, etc.), organized by folder and user.
+- \[ \] **Implement Backend Caching Logic:** The /api/drive/files endpoint will be updated to:
+  1. Fetch the latest list of files from the Google Drive API for a requested folder.
+  2. Update the drive_cache.json for that folder, adding new files and updating existing ones.
+- \[ \] **Modify API to Serve All Files:** Change the API to return the _entire_ list of cached files for a folder, not just one page. The frontend will handle pagination.
+- \[ \] **Implement Frontend Infinite Scroll:**
+  - The FileBrowser component will initially load and display the first batch of files from the large list returned by the API.
+  - As the user scrolls down, the component will render more files from the already-fetched cache, creating a smooth infinite scroll effect without needing more API calls.
+
+### **Phase 4: Google Photos Integration & Upload Tracking**
 
 - \[ \] **Create Photos API Service:** Write functions to communicate with the Google Photos Library API.
-- \[ \] **Implement Upload Functionality:** Create the backend logic to handle the file upload process. This involves:
-  1. Getting an upload token from the Photos API.
-  2. Uploading the file bytes.
-  3. Creating a media item in the user's library.
-- \[ \] **Connect UI to Upload Logic:** Add an "Upload" button that triggers the process.
-
-### **Phase 4: Tracking Uploaded Files**
-
-- \[ \] **Setup Local Database:** Use a simple file-based database like lowdb to create a data/db.json file for tracking uploads.
-- \[ \] **Define Data Structure:** The db.json file will store an array of objects, each containing userId, driveFileId, photosMediaItemId, etc.
-- \[ \] **Implement Tracking Logic:**
-  - Before uploading, check the db.json file to see if the driveFileId already exists for the current user.
-  - If it exists, skip the file.
-  - If it doesn't exist, proceed with the upload.
-  - After a successful upload, save the new record to the db.json file.
-- \[ \] **Update UI with File Status:** Visually indicate which files have already been uploaded.
+- \[ \] **Implement Upload Functionality:** Create the backend logic to handle the multi-step file upload process (get upload token, upload bytes, create media item).
+- \[ \] **Implement Upload Tracking:** Use lowdb (e.g., in data/uploads.json) to track uploaded files to prevent duplicates.
+  - Before starting an upload, check the uploads.json file.
+  - After a successful upload, record the file's driveFileId and photosMediaItemId.
+- \[ \] **Connect UI to Upload Logic:** Add an "Upload Selected" button to the FileBrowser component that triggers the process.
+- \[ \] **Update UI with File Status:** Visually indicate which files in the browser have already been uploaded based on the tracking data.
 
 ### **Phase 5: Polishing and Deployment**
 
-- \[ \] **Add Loading States:** Show spinners or loaders during API calls.
-- \[ \] **Implement Error Handling:** Display user-friendly error messages.
-- \[ \] **Refine UI/UX:** Improve the overall look and feel.
-- \[ \] **Deploy to Vercel:** Configure the project for production deployment (and potentially migrate to a cloud database like Firestore).
+- \[ \] **Add Loading & Upload Status UI:** Show spinners during syncs and detailed progress during uploads.
+- \[ \] **Implement Error Handling:** Display user-friendly error messages for API or upload failures.
+- \[ \] **Refine UI/UX:** Improve the overall look, feel, and performance.
+- \[ \] **Deploy to Vercel:** Configure the project for production deployment.
