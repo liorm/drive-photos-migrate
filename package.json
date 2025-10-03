@@ -17,6 +17,7 @@
   "dependencies": {
     "googleapis": "^161.0.0",
     "lowdb": "^7.0.1",
+    "lucide-react": "^0.544.0",
     "next": "^15.5.4",
     "next-auth": "^5.0.0-beta.29",
     "react": "^19.2.0",
