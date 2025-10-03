@@ -33,7 +33,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       <aside
         className={`fixed top-0 left-0 z-40 w-64 h-screen pt-20 transition-transform ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
-        } bg-white border-r border-gray-200 lg:translate-x-0`}
+        } bg-gray-50 border-r border-gray-200 lg:translate-x-0`}
       >
         <button
           onClick={onClose}
@@ -42,7 +42,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           <X className="w-6 h-6" />
         </button>
 
-        <div className="h-full px-3 pb-4 overflow-y-auto bg-white">
+        <div className="h-full px-3 pb-4 overflow-y-auto bg-gray-50">
           <ul className="space-y-2 font-medium">
             {menuItems.map((item) => {
               const Icon = item.icon;
