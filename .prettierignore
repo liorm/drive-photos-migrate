@@ -27,3 +27,10 @@ pnpm-lock.yaml
 
 # Coverage
 coverage/
+
+# AI IDE files
+/.claude/
+/.copilot/
+/.vscode/
+/.idea/
+
