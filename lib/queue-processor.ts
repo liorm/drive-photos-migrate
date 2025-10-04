@@ -4,11 +4,27 @@ import { recordUpload } from './uploads-db';
 import { clearFileSyncStatusCache } from './sync-status';
 import { createLogger } from './logger';
 import operationStatusManager, { OperationType } from './operation-status';
+import { retryWithBackoff } from './retry';
+import backoffController from './backoff-controller';
 
 const logger = createLogger('queue-processor');
 
 // Track active processing per user to prevent concurrent processing
-const activeProcessing = new Map<string, boolean>();
+const activeProcessing = new Set<string>();
+
+// Track stop requests (set by API/UI) so processing can be stopped
+// gracefully between batches.
+const stopRequests = new Set<string>();
+
+/** Request that processing for a user be stopped. */
+export function requestStopProcessing(userEmail: string): void {
+  stopRequests.add(userEmail);
+}
+
+/** Clear a previously requested stop for a user. */
+export function clearStopRequest(userEmail: string): void {
+  stopRequests.delete(userEmail);
+}
 
 /**
  * Process the upload queue for a user
@@ -19,18 +35,32 @@ export async function processQueue(
   accessToken: string
 ): Promise<void> {
   // Check if already processing for this user
-  if (activeProcessing.get(userEmail)) {
+  if (activeProcessing.has(userEmail)) {
     logger.info('Queue already being processed for user, skipping', {
       userEmail,
     });
     return;
   }
 
+  // Respect a stop request that was issued before processing started
+  if (stopRequests.has(userEmail)) {
+    logger.info('Stop requested before starting processing, skipping', {
+      userEmail,
+    });
+    stopRequests.delete(userEmail);
+    return;
+  }
+
   // Mark as processing
-  activeProcessing.set(userEmail, true);
+  activeProcessing.add(userEmail);
 
   try {
     logger.info('Starting queue processing', { userEmail });
+
+    // Single-instance server: reset any items left in 'uploading' state so
+    // they can be retried. This is safe because there's only one process
+    // handling the queue.
+    // (No implicit resets here - stop is explicit via requestStopProcessing)
 
     // Get pending items
     const pendingItems = await getQueueByStatus(userEmail, 'pending');
@@ -60,116 +90,199 @@ export async function processQueue(
     let successCount = 0;
     let failureCount = 0;
 
-    // Process items one at a time
-    for (let i = 0; i < pendingItems.length; i++) {
-      const item = pendingItems[i];
+    // Process items with limited concurrency (workers). This allows up to
+    // QUEUE_CONCURRENCY concurrent downloads/uploads while still honoring
+    // shared backoff pauses when a retry indicates rate limiting.
+    // Process items with limited concurrency (workers). This allows up to
+    // QUEUE_CONCURRENCY concurrent downloads/uploads while still honoring
+    // shared backoff pauses when a retry indicates rate limiting.
+    const DEFAULT_CONCURRENCY =
+      parseInt(process.env.QUEUE_CONCURRENCY || '5', 10) || 5;
+    const MAX_CONCURRENCY = 10;
+    const concurrency = Math.max(
+      1,
+      Math.min(
+        MAX_CONCURRENCY,
+        Math.min(DEFAULT_CONCURRENCY, pendingItems.length)
+      )
+    );
 
-      logger.info('Processing queue item', {
-        userEmail,
-        queueItemId: item.id,
-        driveFileId: item.driveFileId,
-        fileName: item.fileName,
-        progress: `${i + 1}/${pendingItems.length}`,
-      });
+    logger.info('Processing queue items with concurrency', {
+      userEmail,
+      totalItems: pendingItems.length,
+      concurrency,
+    });
 
-      // Update operation progress
-      operationStatusManager.updateProgress(
-        operationId,
-        i,
-        pendingItems.length
-      );
+    let nextIndex = 0;
 
-      try {
-        // Update item status to uploading
-        await updateQueueItem(userEmail, item.id, {
-          status: 'uploading',
-          startedAt: new Date().toISOString(),
-        });
+    const workers: Promise<void>[] = [];
 
-        // Download file from Drive
-        logger.debug('Downloading file from Drive', {
-          userEmail,
-          driveFileId: item.driveFileId,
-          fileName: item.fileName,
-        });
+    for (let w = 0; w < concurrency; w++) {
+      const worker = (async () => {
+        while (true) {
+          const index = nextIndex++;
+          if (index >= pendingItems.length) break;
+          const item = pendingItems[index];
 
-        const buffer = await downloadDriveFile(accessToken, item.driveFileId);
+          logger.info('Worker picked queue item', {
+            userEmail,
+            workerId: w,
+            queueItemId: item.id,
+            driveFileId: item.driveFileId,
+            fileName: item.fileName,
+          });
 
-        logger.debug('File downloaded successfully', {
-          userEmail,
-          driveFileId: item.driveFileId,
-          size: buffer.length,
-        });
+          // Wait if the user is paused due to a backoff triggered elsewhere
+          await backoffController.waitWhilePaused(userEmail);
 
-        // Upload to Photos
-        logger.debug('Uploading file to Photos', {
-          userEmail,
-          driveFileId: item.driveFileId,
-          fileName: item.fileName,
-        });
+          try {
+            await retryWithBackoff(
+              async () => {
+                // Update item status to uploading
+                await updateQueueItem(userEmail, item.id, {
+                  status: 'uploading',
+                  startedAt: new Date().toISOString(),
+                });
 
-        const photosMediaItemId = await uploadFileToPhotos(
-          accessToken,
-          buffer,
-          item.fileName,
-          item.mimeType
-        );
+                // Download file from Drive
+                logger.debug('Downloading file from Drive', {
+                  userEmail,
+                  queueItemId: item.id,
+                  driveFileId: item.driveFileId,
+                  fileName: item.fileName,
+                });
 
-        logger.info('File uploaded to Photos successfully', {
-          userEmail,
-          driveFileId: item.driveFileId,
-          fileName: item.fileName,
-          photosMediaItemId,
-        });
+                const buffer = await downloadDriveFile(
+                  accessToken,
+                  item.driveFileId
+                );
 
-        // Record upload in database
-        await recordUpload(
-          userEmail,
-          item.driveFileId,
-          photosMediaItemId,
-          item.fileName,
-          item.mimeType
-        );
+                logger.debug('File downloaded successfully', {
+                  userEmail,
+                  queueItemId: item.id,
+                  driveFileId: item.driveFileId,
+                  size: buffer.length,
+                });
 
-        // Clear sync status cache for this file
-        await clearFileSyncStatusCache(userEmail, [item.driveFileId]);
+                // Upload to Photos
+                logger.debug('Uploading file to Photos', {
+                  userEmail,
+                  queueItemId: item.id,
+                  driveFileId: item.driveFileId,
+                  fileName: item.fileName,
+                });
 
-        // Update item status to completed
-        await updateQueueItem(userEmail, item.id, {
-          status: 'completed',
-          completedAt: new Date().toISOString(),
-          photosMediaItemId,
-        });
+                const photosMediaItemId = await uploadFileToPhotos(
+                  accessToken,
+                  buffer,
+                  item.fileName,
+                  item.mimeType
+                );
 
-        successCount++;
+                logger.info('File uploaded to Photos successfully', {
+                  userEmail,
+                  queueItemId: item.id,
+                  driveFileId: item.driveFileId,
+                  fileName: item.fileName,
+                  photosMediaItemId,
+                });
 
-        logger.info('Queue item processed successfully', {
-          userEmail,
-          queueItemId: item.id,
-          driveFileId: item.driveFileId,
-          fileName: item.fileName,
-        });
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
+                // Record upload in database
+                await recordUpload(
+                  userEmail,
+                  item.driveFileId,
+                  photosMediaItemId,
+                  item.fileName,
+                  item.mimeType
+                );
 
-        logger.error('Error processing queue item', error, {
-          userEmail,
-          queueItemId: item.id,
-          driveFileId: item.driveFileId,
-          fileName: item.fileName,
-        });
+                // Clear sync status cache for this file
+                await clearFileSyncStatusCache(userEmail, [item.driveFileId]);
 
-        // Update item status to failed
-        await updateQueueItem(userEmail, item.id, {
-          status: 'failed',
-          completedAt: new Date().toISOString(),
-          error: errorMessage,
-        });
+                // Update item status to completed
+                await updateQueueItem(userEmail, item.id, {
+                  status: 'completed',
+                  completedAt: new Date().toISOString(),
+                  photosMediaItemId,
+                });
 
-        failureCount++;
-      }
+                logger.info('Queue item processed successfully', {
+                  userEmail,
+                  queueItemId: item.id,
+                  driveFileId: item.driveFileId,
+                  fileName: item.fileName,
+                });
+              },
+              {
+                maxRetries: 3,
+                onRetry: (error, attempt, delay) => {
+                  logger.warn('Retrying queue item', {
+                    userEmail,
+                    queueItemId: item.id,
+                    driveFileId: item.driveFileId,
+                    fileName: item.fileName,
+                    attempt,
+                    delay,
+                    error: error.message,
+                  });
+
+                  // If the error is a rate-limit (delay > 0) we'll pause other
+                  // processing for this user for at least the delay window.
+                  if (delay && delay > 0) {
+                    backoffController.pauseUserBackoff(
+                      userEmail,
+                      delay,
+                      `backoff retry for ${item.fileName}`
+                    );
+                  }
+
+                  // Update operation status if tracking
+                  operationStatusManager.retryOperation(
+                    operationId,
+                    `Retrying ${item.fileName}: ${error.message}`,
+                    attempt,
+                    3
+                  );
+                },
+              }
+            );
+
+            successCount++;
+          } catch (error) {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+
+            logger.error('Error processing queue item', error, {
+              userEmail,
+              queueItemId: item.id,
+              driveFileId: item.driveFileId,
+              fileName: item.fileName,
+            });
+
+            // Update item status to failed
+            await updateQueueItem(userEmail, item.id, {
+              status: 'failed',
+              completedAt: new Date().toISOString(),
+              error: errorMessage,
+            });
+
+            failureCount++;
+          }
+
+          // Update operation progress after each item
+          const completedSoFar = successCount + failureCount;
+          operationStatusManager.updateProgress(
+            operationId,
+            Math.min(completedSoFar, pendingItems.length),
+            pendingItems.length
+          );
+        }
+      })();
+
+      workers.push(worker);
     }
+
+    await Promise.all(workers);
 
     // Update final operation progress
     operationStatusManager.updateProgress(

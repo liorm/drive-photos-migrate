@@ -9,6 +9,9 @@ import operationStatusManager, {
   trackOperation,
   OperationType,
 } from '@/lib/operation-status';
+import { getDriveFile } from './google-drive';
+import { retryWithBackoff } from '@/lib/retry';
+import backoffController from './backoff-controller';
 
 const logger = createLogger('google-photos');
 
@@ -209,7 +212,9 @@ export async function batchUploadFiles(
     fileId: string,
     status: 'uploading' | 'success' | 'error',
     error?: string
-  ) => void
+  ) => void,
+  // Optional: pass userEmail so batch uploads can coordinate per-user backoff
+  userEmail?: string
 ): Promise<
   Array<{
     driveFileId: string;
@@ -222,85 +227,116 @@ export async function batchUploadFiles(
     OperationType.LONG_WRITE,
     'Uploading files to Google Photos',
     async operationId => {
-      logger.info('Starting batch upload to Photos', {
+      logger.info('Starting batch upload to Photos (sequential with backoff)', {
         fileCount: files.length,
       });
 
       let completedCount = 0;
+      const results: Array<{
+        driveFileId: string;
+        photosMediaItemId?: string;
+        success: boolean;
+        error?: string;
+      }> = [];
 
-      const results = await Promise.allSettled(
-        files.map(async file => {
-          try {
-            onProgress?.(file.driveFileId, 'uploading');
+      // Process files sequentially so that any retry/backoff for one file
+      // pauses progress for the rest of the batch (no wasted requests).
+      for (const file of files) {
+        // If another item triggered a backoff for this user, wait here.
+        if (userEmail) await backoffController.waitWhilePaused(userEmail);
+        try {
+          onProgress?.(file.driveFileId, 'uploading');
 
-            const mediaItemId = await uploadFileToPhotos(
-              accessToken,
-              file.buffer,
-              file.fileName,
-              file.mimeType,
-              operationId
-            );
+          const mediaItemId = await retryWithBackoff(
+            async () =>
+              uploadFileToPhotos(
+                accessToken,
+                file.buffer,
+                file.fileName,
+                file.mimeType,
+                operationId
+              ),
+            {
+              maxRetries: 3,
+              onRetry: (error, attempt, delay) => {
+                logger.warn('Retrying batch upload file', {
+                  driveFileId: file.driveFileId,
+                  fileName: file.fileName,
+                  attempt,
+                  delay,
+                  error: error.message,
+                });
 
-            completedCount++;
-            operationStatusManager.updateProgress(
-              operationId,
-              completedCount,
-              files.length
-            );
+                // If we have a userEmail, set a shared pause so other workers
+                // for this user wait while we backoff.
+                if (userEmail && delay && delay > 0) {
+                  backoffController.pauseUserBackoff(
+                    userEmail,
+                    delay,
+                    `batch upload retry for ${file.fileName}`
+                  );
+                }
 
-            onProgress?.(file.driveFileId, 'success');
+                // Update operation status if tracking
+                if (operationId) {
+                  operationStatusManager.retryOperation(
+                    operationId,
+                    `Upload failed for ${file.fileName}: ${error.message}`,
+                    attempt,
+                    3
+                  );
+                }
+              },
+            }
+          );
 
-            return {
-              driveFileId: file.driveFileId,
-              photosMediaItemId: mediaItemId,
-              success: true,
-            };
-          } catch (error) {
-            const errorMsg =
-              error instanceof Error ? error.message : 'Unknown error';
-            logger.error('Batch upload file failed', error, {
-              driveFileId: file.driveFileId,
-              fileName: file.fileName,
-            });
+          completedCount++;
+          operationStatusManager.updateProgress(
+            operationId,
+            completedCount,
+            files.length
+          );
 
-            completedCount++;
-            operationStatusManager.updateProgress(
-              operationId,
-              completedCount,
-              files.length
-            );
+          onProgress?.(file.driveFileId, 'success');
 
-            onProgress?.(file.driveFileId, 'error', errorMsg);
+          results.push({
+            driveFileId: file.driveFileId,
+            photosMediaItemId: mediaItemId,
+            success: true,
+          });
+        } catch (error) {
+          const errorMsg =
+            error instanceof Error ? error.message : 'Unknown error';
+          logger.error('Batch upload file failed after retries', error, {
+            driveFileId: file.driveFileId,
+            fileName: file.fileName,
+          });
 
-            return {
-              driveFileId: file.driveFileId,
-              success: false,
-              error: errorMsg,
-            };
-          }
-        })
-      );
+          completedCount++;
+          operationStatusManager.updateProgress(
+            operationId,
+            completedCount,
+            files.length
+          );
 
-      const finalResults = results.map(result => {
-        if (result.status === 'fulfilled') {
-          return result.value;
-        } else {
-          return {
-            driveFileId: 'unknown',
+          onProgress?.(file.driveFileId, 'error', errorMsg);
+
+          results.push({
+            driveFileId: file.driveFileId,
             success: false,
-            error: result.reason?.message || 'Unknown error',
-          };
+            error: errorMsg,
+          });
         }
-      });
+      }
 
-      const successCount = finalResults.filter(r => r.success).length;
+      const successCount = results.filter(r => r.success).length;
       logger.info('Batch upload completed', {
         totalFiles: files.length,
         successCount,
         failureCount: files.length - successCount,
       });
 
-      return finalResults;
+      return results;
     },
     {
       description: `Uploading ${files.length} files`,
@@ -320,43 +356,151 @@ export async function downloadDriveFile(
 ): Promise<Buffer> {
   logger.debug('Downloading file from Drive', { fileId });
 
-  const response = await fetchWithRetry(
-    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
+  try {
+    const response = await fetchWithRetry(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
       },
-    },
-    {
-      maxRetries: 3,
-      onRetry: (error, attempt, delay) => {
-        logger.warn('Retrying download Drive file', {
-          fileId,
-          attempt,
-          delay,
-          error: error.message,
-        });
-
-        // Update operation status if tracking
-        if (operationId) {
-          operationStatusManager.retryOperation(
-            operationId,
-            `Download failed: ${error.message}`,
+      {
+        maxRetries: 3,
+        onRetry: (error, attempt, delay) => {
+          logger.warn('Retrying download Drive file', {
+            fileId,
             attempt,
-            3
-          );
+            delay,
+            error: error.message,
+          });
+
+          // Update operation status if tracking
+          if (operationId) {
+            operationStatusManager.retryOperation(
+              operationId,
+              `Download failed: ${error.message}`,
+              attempt,
+              3
+            );
+          }
+        },
+      }
+    );
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    logger.debug('Drive file downloaded', {
+      fileId,
+      size: buffer.length,
+    });
+
+    return buffer;
+  } catch (error) {
+    // If authorization error occurred (401/403), try refreshing file metadata
+    // to obtain a new download URL and retry once more.
+    // Safely inspect the error object without using `any` so linter is happy.
+    let statusCode: number | undefined;
+    if (error && typeof error === 'object') {
+      const obj = error as Record<string, unknown>;
+      if (obj.details && typeof obj.details === 'object') {
+        const details = obj.details as Record<string, unknown>;
+        if (typeof details.statusCode === 'number') {
+          statusCode = details.statusCode;
         }
-      },
+      }
+      if (statusCode === undefined && typeof obj['status'] === 'number') {
+        statusCode = obj['status'] as number;
+      }
     }
-  );
 
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
+    const lowerMsg = error instanceof Error ? error.message.toLowerCase() : '';
 
-  logger.debug('Drive file downloaded', {
-    fileId,
-    size: buffer.length,
-  });
+    const isAuthError =
+      statusCode === 401 ||
+      statusCode === 403 ||
+      lowerMsg.includes('unauthorized') ||
+      lowerMsg.includes('forbidden');
 
-  return buffer;
+    if (isAuthError) {
+      logger.warn(
+        'Authorization error downloading file, attempting to refresh metadata and retry',
+        {
+          fileId,
+        }
+      );
+
+      try {
+        const metadata = await getDriveFile(accessToken, fileId, operationId);
+
+        // Minimal typing for the fields we may use from Drive metadata
+        type DriveFileMetadata = { webContentLink?: string } & Record<
+          string,
+          unknown
+        >;
+
+        const meta = metadata as DriveFileMetadata;
+
+        // Try webContentLink if available
+        const downloadUrl = meta.webContentLink;
+
+        if (downloadUrl) {
+          logger.debug('Retrying download using refreshed webContentLink', {
+            fileId,
+            downloadUrl,
+          });
+
+          const response2 = await fetchWithRetry(
+            downloadUrl,
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+            },
+            {
+              maxRetries: 2,
+              onRetry: (err, attempt, delay) => {
+                logger.warn('Retrying download via webContentLink', {
+                  fileId,
+                  attempt,
+                  delay,
+                  error: err.message,
+                });
+
+                if (operationId) {
+                  operationStatusManager.retryOperation(
+                    operationId,
+                    `Download via refreshed URL failed: ${err.message}`,
+                    attempt,
+                    2
+                  );
+                }
+              },
+            }
+          );
+
+          const arrayBuffer2 = await response2.arrayBuffer();
+          const buffer2 = Buffer.from(arrayBuffer2);
+
+          logger.debug('Drive file downloaded via refreshed URL', {
+            fileId,
+            size: buffer2.length,
+          });
+
+          return buffer2;
+        }
+      } catch (metaErr) {
+        logger.warn(
+          'Failed to refresh metadata or download via refreshed URL',
+          {
+            fileId,
+            error: metaErr instanceof Error ? metaErr.message : String(metaErr),
+          }
+        );
+      }
+    }
+
+    // Re-throw original error if we couldn't recover
+    throw error;
+  }
 }

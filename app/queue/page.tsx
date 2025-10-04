@@ -34,6 +34,7 @@ export default function QueuePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [stopRequested, setStopRequested] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearingAll, setClearingAll] = useState(false);
   const [showClearAllDialog, setShowClearAllDialog] = useState(false);
@@ -126,6 +127,38 @@ export default function QueuePage() {
       console.error('Error starting queue processing:', err);
     } finally {
       setProcessing(false);
+    }
+  };
+
+  // Request stop processing
+  const handleStop = async () => {
+    try {
+      setStopRequested(true);
+      setError(null);
+
+      const response = await fetch('/api/queue/process', {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.error || 'Failed to request stop';
+
+        if (response.status === 401 && isAuthError(errorMessage)) {
+          await handleAuthError();
+          return;
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      // Refresh queue after requesting stop
+      await fetchQueue();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      console.error('Error requesting stop:', err);
+    } finally {
+      setStopRequested(false);
     }
   };
 
@@ -286,6 +319,24 @@ export default function QueuePage() {
               <>
                 <Play className="h-4 w-4" />
                 Start Processing ({stats.pending})
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={handleStop}
+            disabled={!(processing || stats.uploading > 0) || stopRequested}
+            className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {stopRequested ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Requesting stop...
+              </>
+            ) : (
+              <>
+                <Trash2 className="h-4 w-4" />
+                Stop Processing
               </>
             )}
           </button>

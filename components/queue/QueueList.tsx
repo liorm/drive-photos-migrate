@@ -22,6 +22,11 @@ export function QueueList({ items, onRemove }: QueueListProps) {
   ) => {
     if (sectionItems.length === 0) return null;
 
+    const DISPLAY_LIMIT = 20;
+    const displayItems = sectionItems.slice(0, DISPLAY_LIMIT);
+    const hiddenCount = sectionItems.length - DISPLAY_LIMIT;
+    const hasHiddenItems = hiddenCount > 0;
+
     return (
       <div className="mb-6">
         <h3 className="mb-3 text-sm font-semibold text-gray-700">
@@ -31,10 +36,15 @@ export function QueueList({ items, onRemove }: QueueListProps) {
           )}
         </h3>
         <div className="space-y-2">
-          {sectionItems.map(item => (
+          {displayItems.map(item => (
             <QueueItem key={item.id} item={item} onRemove={onRemove} />
           ))}
         </div>
+        {hasHiddenItems && (
+          <p className="mt-3 text-sm text-gray-600 italic">
+            Additional {hiddenCount} {title.toLowerCase()} items
+          </p>
+        )}
       </div>
     );
   };

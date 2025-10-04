@@ -481,3 +481,77 @@ export async function getQueuedFileIds(
 
   return queuedIds;
 }
+
+/**
+ * Reset 'uploading' items that have been stuck for longer than the threshold
+ * back to 'pending' so processing can be retried. Returns the number of items
+ * reset.
+ */
+export async function resetStuckUploadingItems(
+  userEmail: string,
+  // Default to 0ms so caller can decide whether to use a time threshold or
+  // to reset immediately. The queue-processor will guard this call with a
+  // manager check to avoid resetting uploads that are currently in progress.
+  olderThanMs = 0
+): Promise<number> {
+  const db = getDatabase();
+
+  const cutoff = new Date(Date.now() - olderThanMs).toISOString();
+
+  const result = db
+    .prepare(
+      `UPDATE queue_items
+       SET status = 'pending', started_at = NULL, error = NULL
+       WHERE user_email = ? AND status = 'uploading' AND started_at <= ?`
+    )
+    .run(userEmail, cutoff);
+
+  const resetCount = result.changes || 0;
+
+  if (resetCount > 0) {
+    logger.info('Reset uploading items to pending', {
+      userEmail,
+      resetCount,
+      cutoff,
+    });
+  } else {
+    logger.debug('No uploading items found to reset', { userEmail });
+  }
+
+  return resetCount;
+}
+
+/**
+ * Mark all currently 'uploading' items for a user as 'failed' with the
+ * provided error message. Returns the number of items updated.
+ */
+export async function failUploadingItems(
+  userEmail: string,
+  errorMessage: string
+): Promise<number> {
+  const db = getDatabase();
+
+  const now = new Date().toISOString();
+
+  const result = db
+    .prepare(
+      `UPDATE queue_items
+       SET status = 'failed', completed_at = ?, error = ?
+       WHERE user_email = ? AND status = 'uploading'`
+    )
+    .run(now, errorMessage, userEmail);
+
+  const count = result.changes || 0;
+
+  if (count > 0) {
+    logger.info('Marked uploading items as failed', {
+      userEmail,
+      count,
+      errorMessage,
+    });
+  } else {
+    logger.debug('No uploading items to mark as failed', { userEmail });
+  }
+
+  return count;
+}
