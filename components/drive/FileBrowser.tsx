@@ -182,28 +182,27 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
     setSelectedFiles(new Set());
   };
 
-  // Upload selected files to Photos
-  const handleUpload = async () => {
+  // Add selected files to upload queue
+  const handleAddToQueue = async () => {
     if (selectedFiles.size === 0) return;
 
     setUploading(true);
-    setUploadProgress(`Uploading ${selectedFiles.size} file(s)...`);
+    setUploadProgress(`Adding ${selectedFiles.size} file(s) to queue...`);
 
     try {
-      const response = await fetch('/api/photos/upload', {
+      const response = await fetch('/api/queue', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           fileIds: Array.from(selectedFiles),
-          folderId: currentFolderId,
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        const errorMessage = errorData.error || 'Failed to upload files';
+        const errorMessage = errorData.error || 'Failed to add files to queue';
 
         // Check if this is an authentication error
         if (response.status === 401 && isAuthError(errorMessage)) {
@@ -218,16 +217,13 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
       const result = await response.json();
 
       setUploadProgress(
-        `Upload complete! ${result.successCount} succeeded, ${result.failureCount} failed.`
+        `Added ${result.addedCount} file(s) to queue. ${result.skippedCount} skipped (already in queue or synced).`
       );
 
       // Clear selection
       setSelectedFiles(new Set());
 
-      // Refetch the file list to show updated sync status (no refresh - just get from cache)
-      await fetchFiles(currentFolderId, 0, false);
-
-      // Clear upload progress after 3 seconds
+      // Clear message after 3 seconds
       setTimeout(() => {
         setUploadProgress(null);
       }, 3000);
@@ -235,7 +231,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
       setUploadProgress(
         `Error: ${err instanceof Error ? err.message : 'Unknown error occurred'}`
       );
-      console.error('Error uploading files:', err);
+      console.error('Error adding files to queue:', err);
 
       // Clear error after 5 seconds
       setTimeout(() => {
@@ -318,19 +314,19 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
 
         {selectedFiles.size > 0 && (
           <button
-            onClick={handleUpload}
+            onClick={handleAddToQueue}
             disabled={uploading}
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {uploading ? (
               <span className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Uploading...
+                Adding...
               </span>
             ) : (
               <>
-                Upload {selectedFiles.size} file
-                {selectedFiles.size !== 1 ? 's' : ''} to Photos
+                Add {selectedFiles.size} file
+                {selectedFiles.size !== 1 ? 's' : ''} to Queue
               </>
             )}
           </button>

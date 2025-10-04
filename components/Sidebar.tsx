@@ -1,6 +1,6 @@
 'use client';
 
-import { Home, FolderOpen, X, LogOut, LogIn, Menu } from 'lucide-react';
+import { Home, FolderOpen, X, LogOut, LogIn, Menu, ListOrdered } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession, signIn, signOut } from 'next-auth/react';
@@ -10,6 +10,7 @@ import { useState } from 'react';
 const menuItems = [
   { name: 'Dashboard', href: '/', icon: Home },
   { name: 'Browse', href: '/drive', icon: FolderOpen },
+  { name: 'Upload Queue', href: '/queue', icon: ListOrdered },
 ];
 
 export default function Sidebar() {
