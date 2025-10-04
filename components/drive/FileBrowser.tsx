@@ -45,6 +45,8 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
   const [currentPage, setCurrentPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
   // Fetch files from API
   const fetchFiles = useCallback(
@@ -170,6 +172,61 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
     setSelectedFiles(new Set());
   };
 
+  // Upload selected files to Photos
+  const handleUpload = async () => {
+    if (selectedFiles.size === 0) return;
+
+    setUploading(true);
+    setUploadProgress(`Uploading ${selectedFiles.size} file(s)...`);
+
+    try {
+      const response = await fetch('/api/photos/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileIds: Array.from(selectedFiles),
+          folderId: currentFolderId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to upload files');
+      }
+
+      const result = await response.json();
+
+      setUploadProgress(
+        `Upload complete! ${result.successCount} succeeded, ${result.failureCount} failed.`
+      );
+
+      // Clear selection
+      setSelectedFiles(new Set());
+
+      // Refetch the file list to show updated sync status (no refresh - just get from cache)
+      await fetchFiles(currentFolderId, 0, false);
+
+      // Clear upload progress after 3 seconds
+      setTimeout(() => {
+        setUploadProgress(null);
+      }, 3000);
+    } catch (err) {
+      setUploadProgress(
+        `Error: ${err instanceof Error ? err.message : 'Unknown error occurred'}`
+      );
+      console.error('Error uploading files:', err);
+
+      // Clear error after 5 seconds
+      setTimeout(() => {
+        setUploadProgress(null);
+      }, 5000);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   // Combine folders and files for display
   const items = [...folders, ...files];
 
@@ -241,12 +298,33 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
         </div>
 
         {selectedFiles.size > 0 && (
-          <button className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700">
-            Upload {selectedFiles.size} file
-            {selectedFiles.size !== 1 ? 's' : ''} to Photos
+          <button
+            onClick={handleUpload}
+            disabled={uploading}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {uploading ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Uploading...
+              </span>
+            ) : (
+              <>
+                Upload {selectedFiles.size} file
+                {selectedFiles.size !== 1 ? 's' : ''} to Photos
+              </>
+            )}
           </button>
         )}
       </div>
+
+      {/* Upload progress */}
+      {uploadProgress && (
+        <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-800">
+          <Loader2 className="h-5 w-5 flex-shrink-0 animate-spin" />
+          <p className="text-sm">{uploadProgress}</p>
+        </div>
+      )}
 
       {/* Error state */}
       {error && (

@@ -1,3 +1,5 @@
+import { SyncStatus, SyncStatusDetail } from './sync-status';
+
 export interface DriveFile {
   id: string;
   name: string;
@@ -9,6 +11,7 @@ export interface DriveFile {
   createdTime: string;
   modifiedTime: string;
   parents?: string[];
+  syncStatus?: SyncStatus;
 }
 
 export interface DriveFolder {
@@ -18,6 +21,7 @@ export interface DriveFolder {
   createdTime: string;
   modifiedTime: string;
   parents?: string[];
+  syncStatus?: SyncStatusDetail;
 }
 
 export interface DriveListResponse {

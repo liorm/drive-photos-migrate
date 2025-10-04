@@ -7,6 +7,11 @@ import {
   syncFolderToCache,
   clearFolderCache,
 } from '@/lib/drive-cache';
+import { getUploadRecords } from '@/lib/uploads-db';
+import {
+  getCachedFolderSyncStatus,
+  calculateFolderSyncStatus,
+} from '@/lib/sync-status';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('api:drive:files');
@@ -76,7 +81,7 @@ export async function GET(request: NextRequest) {
           userEmail,
           folderId,
         });
-        await clearFolderCache(userEmail, folderId);
+        await clearFolderCache(userEmail, folderId, session.accessToken);
       }
 
       // Sync all files from Drive API to cache
@@ -111,6 +116,45 @@ export async function GET(request: NextRequest) {
     // Get folder path for breadcrumbs
     const folderPath = await getFolderPath(session.accessToken, folderId);
 
+    // Get sync status for files and folders
+    // For files: bulk check upload status
+    const fileIds = cachedData.files.map(f => f.id);
+    const uploadRecords = await getUploadRecords(userEmail, fileIds);
+
+    const fileSyncStatuses = new Map();
+    for (const [fileId, uploadRecord] of uploadRecords.entries()) {
+      fileSyncStatuses.set(
+        fileId,
+        uploadRecord !== null ? 'synced' : 'unsynced'
+      );
+    }
+
+    // For folders: try to get cached sync status, calculate if not cached
+    const folderSyncStatuses = new Map();
+    for (const folder of cachedData.folders) {
+      const cached = await getCachedFolderSyncStatus(userEmail, folder.id);
+      if (cached) {
+        folderSyncStatuses.set(folder.id, cached);
+      } else {
+        // Calculate in the background to avoid blocking the response
+        // Store as 'unknown' for now
+        folderSyncStatuses.set(folder.id, {
+          status: 'unsynced',
+          syncedCount: 0,
+          totalCount: 0,
+          percentage: 0,
+          lastChecked: new Date().toISOString(),
+        });
+        // Trigger calculation in background (don't await)
+        calculateFolderSyncStatus(userEmail, folder.id).catch(error => {
+          logger.error('Background folder sync calculation failed', error, {
+            userEmail,
+            folderId: folder.id,
+          });
+        });
+      }
+    }
+
     logger.info('Request completed successfully', {
       requestId,
       userEmail,
@@ -122,8 +166,14 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json({
-      files: cachedData.files,
-      folders: cachedData.folders,
+      files: cachedData.files.map(file => ({
+        ...file,
+        syncStatus: fileSyncStatuses.get(file.id) || 'unsynced',
+      })),
+      folders: cachedData.folders.map(folder => ({
+        ...folder,
+        syncStatus: folderSyncStatuses.get(folder.id),
+      })),
       totalCount: cachedData.totalCount,
       hasMore: cachedData.hasMore,
       lastSynced: cachedData.lastSynced,

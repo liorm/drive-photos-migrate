@@ -1,7 +1,7 @@
 'use client';
 
 import { DriveFile } from '@/types/google-drive';
-import { FileImage, FileVideo, File } from 'lucide-react';
+import { FileImage, FileVideo, File, CheckCircle2 } from 'lucide-react';
 import Image from 'next/image';
 
 interface FileItemProps {
@@ -13,6 +13,7 @@ interface FileItemProps {
 export function FileItem({ file, isSelected, onToggleSelect }: FileItemProps) {
   const isImage = file.mimeType.startsWith('image/');
   const isVideo = file.mimeType.startsWith('video/');
+  const isSynced = file.syncStatus === 'synced';
 
   // Format file size
   const formatSize = (bytes?: string) => {
@@ -46,7 +47,7 @@ export function FileItem({ file, isSelected, onToggleSelect }: FileItemProps) {
       </div>
 
       {/* Thumbnail or icon */}
-      <div className="mb-3 flex h-32 items-center justify-center overflow-hidden rounded-md bg-gray-100">
+      <div className="relative mb-3 flex h-32 items-center justify-center overflow-hidden rounded-md bg-gray-100">
         {file.thumbnailLink ? (
           <Image
             src={file.thumbnailLink}
@@ -63,6 +64,14 @@ export function FileItem({ file, isSelected, onToggleSelect }: FileItemProps) {
             {!isImage && !isVideo && (
               <File className="h-16 w-16 text-gray-400" />
             )}
+          </div>
+        )}
+
+        {/* Synced badge on thumbnail */}
+        {isSynced && (
+          <div className="absolute bottom-1 left-1 flex items-center gap-1 rounded-full bg-green-600 px-2 py-0.5 text-xs font-semibold text-white shadow-md">
+            <CheckCircle2 className="h-3 w-3" />
+            Synced
           </div>
         )}
       </div>

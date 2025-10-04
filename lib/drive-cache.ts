@@ -133,10 +133,12 @@ export async function syncFolderToCache(
 
 /**
  * Clear a folder from cache (for refresh)
+ * Also clears sync status cache for this folder and all parent folders
  */
 export async function clearFolderCache(
   userEmail: string,
-  folderId: string
+  folderId: string,
+  accessToken: string
 ): Promise<void> {
   logger.info('Clearing folder cache', { userEmail, folderId });
 
@@ -146,6 +148,10 @@ export async function clearFolderCache(
     delete db.data.users[userEmail].folders[folderId];
     await db.write();
     logger.info('Folder cache cleared successfully', { userEmail, folderId });
+
+    // Also clear sync status cache for this folder and all parents
+    const { clearSyncStatusCacheForFolder } = await import('./sync-status');
+    await clearSyncStatusCacheForFolder(userEmail, folderId, accessToken);
   } else {
     logger.debug('Folder cache not found, nothing to clear', {
       userEmail,

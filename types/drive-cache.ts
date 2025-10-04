@@ -1,4 +1,5 @@
 import { DriveFile, DriveFolder } from './google-drive';
+import { SyncStatusDetail } from './sync-status';
 
 /**
  * Cache structure for a single folder
@@ -11,11 +12,22 @@ export interface CachedFolder {
 }
 
 /**
+ * Sync status cache for items (files and folders)
+ */
+export interface SyncStatusCache {
+  [itemId: string]: SyncStatusDetail;
+}
+
+/**
  * Cache structure for all folders of a user
  */
 export interface UserCache {
   folders: {
     [folderId: string]: CachedFolder;
+  };
+  syncStatusCache?: {
+    files: SyncStatusCache;
+    folders: SyncStatusCache;
   };
 }
 
