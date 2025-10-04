@@ -3,7 +3,15 @@
 import { useEffect, useState, useCallback } from 'react';
 import { QueueItem as QueueItemType } from '@/types/upload-queue';
 import { QueueList } from '@/components/queue/QueueList';
-import { Play, Trash2, RefreshCw, Loader2, AlertCircle } from 'lucide-react';
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+import {
+  Play,
+  Trash2,
+  RefreshCw,
+  Loader2,
+  AlertCircle,
+  Trash,
+} from 'lucide-react';
 import { isAuthError, handleAuthError } from '@/lib/auth-error-handler';
 
 interface QueueStats {
@@ -27,6 +35,8 @@ export default function QueuePage() {
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
+  const [showClearAllDialog, setShowClearAllDialog] = useState(false);
 
   // Fetch queue from API
   const fetchQueue = useCallback(async () => {
@@ -154,6 +164,41 @@ export default function QueuePage() {
     }
   };
 
+  // Clear all items (dangerous operation)
+  const handleClearAll = async () => {
+    if (stats.total === 0) return;
+
+    try {
+      setClearingAll(true);
+      setError(null);
+
+      const response = await fetch('/api/queue/clear?all=true', {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.error || 'Failed to clear all items';
+
+        // Check if this is an authentication error
+        if (response.status === 401 && isAuthError(errorMessage)) {
+          await handleAuthError();
+          return;
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      // Refresh queue after clearing
+      await fetchQueue();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      console.error('Error clearing all queue items:', err);
+    } finally {
+      setClearingAll(false);
+    }
+  };
+
   // Remove individual item
   const handleRemove = async (id: string) => {
     try {
@@ -262,6 +307,24 @@ export default function QueuePage() {
               </>
             )}
           </button>
+
+          <button
+            onClick={() => setShowClearAllDialog(true)}
+            disabled={stats.total === 0 || clearingAll}
+            className="flex items-center gap-2 rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {clearingAll ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Clearing All...
+              </>
+            ) : (
+              <>
+                <Trash className="h-4 w-4" />
+                Clear All Items
+              </>
+            )}
+          </button>
         </div>
 
         <button
@@ -298,6 +361,18 @@ export default function QueuePage() {
           <QueueList items={queue} onRemove={handleRemove} />
         )}
       </div>
+
+      {/* Clear All Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={showClearAllDialog}
+        onClose={() => setShowClearAllDialog(false)}
+        onConfirm={handleClearAll}
+        title="Clear All Queue Items"
+        message="Are you sure you want to clear ALL items from the queue? This includes pending, uploading, completed, and failed items. This action cannot be undone."
+        confirmText="Clear All Items"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   );
 }

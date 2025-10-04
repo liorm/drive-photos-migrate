@@ -335,6 +335,29 @@ export async function clearCompletedItems(userEmail: string): Promise<number> {
 }
 
 /**
+ * Clear all items from queue (dangerous operation)
+ */
+export async function clearAllItems(userEmail: string): Promise<number> {
+  logger.info('Clearing all items from queue', { userEmail });
+
+  const db = getDatabase();
+
+  const result = db
+    .prepare(`DELETE FROM queue_items WHERE user_email = ?`)
+    .run(userEmail);
+
+  const removedCount = result.changes;
+
+  if (removedCount > 0) {
+    logger.info('Cleared all items', { userEmail, removedCount });
+  } else {
+    logger.debug('No items to clear', { userEmail });
+  }
+
+  return removedCount;
+}
+
+/**
  * Get cached file metadata by driveFileId (from any queue item)
  */
 export async function getCachedFileMetadata(

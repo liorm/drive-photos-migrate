@@ -300,6 +300,94 @@ export function getCachedFolderCount(
   return result?.total_count || 0;
 }
 
+/**
+ * Get all file IDs from a cached folder (no pagination)
+ */
+export function getAllCachedFileIds(
+  userEmail: string,
+  folderId: string
+): string[] {
+  const db = getDatabase();
+
+  // Get cached folder metadata
+  const cachedFolder = db
+    .prepare(
+      'SELECT id FROM cached_folders WHERE user_email = ? AND folder_id = ?'
+    )
+    .get(userEmail, folderId) as { id: number } | undefined;
+
+  if (!cachedFolder) {
+    logger.debug('Folder not found in cache', { userEmail, folderId });
+    return [];
+  }
+
+  // Get all file IDs
+  const fileRows = db
+    .prepare('SELECT file_id FROM cached_files WHERE cached_folder_id = ?')
+    .all(cachedFolder.id) as Array<{ file_id: string }>;
+
+  const fileIds = fileRows.map(row => row.file_id);
+
+  logger.debug('Retrieved all cached file IDs', {
+    userEmail,
+    folderId,
+    fileCount: fileIds.length,
+  });
+
+  return fileIds;
+}
+
+/**
+ * Get file metadata from Drive cache by file ID
+ */
+export function getFileMetadataFromDriveCache(
+  userEmail: string,
+  fileId: string
+): {
+  fileName: string;
+  mimeType: string;
+  fileSize?: number;
+} | null {
+  const db = getDatabase();
+
+  // Find the file in cached_files across all folders for this user
+  const fileRow = db
+    .prepare(
+      `SELECT cf.name, cf.mime_type, cf.size
+       FROM cached_files cf
+       JOIN cached_folders cfolder ON cf.cached_folder_id = cfolder.id
+       WHERE cfolder.user_email = ? AND cf.file_id = ?
+       LIMIT 1`
+    )
+    .get(userEmail, fileId) as
+    | {
+        name: string;
+        mime_type: string;
+        size: string | null;
+      }
+    | undefined;
+
+  if (!fileRow) {
+    logger.debug('File metadata not found in Drive cache', {
+      userEmail,
+      fileId,
+    });
+    return null;
+  }
+
+  logger.debug('Retrieved file metadata from Drive cache', {
+    userEmail,
+    fileId,
+    fileName: fileRow.name,
+  });
+
+  return {
+    fileName: fileRow.name,
+    mimeType: fileRow.mime_type,
+    fileSize: fileRow.size ? parseInt(fileRow.size) : undefined,
+  };
+}
+
 // ============================================================================
 // Sync Status Cache Operations
 // ============================================================================

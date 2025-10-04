@@ -198,6 +198,7 @@ class OperationStatusManager extends EventEmitter {
    * Updates operation progress
    */
   updateProgress(id: string, current: number, total?: number): void {
+    logger.debug('Updating operation progress', { id, current, total });
     this.updateOperation(id, {
       progress: { current, total },
     });

@@ -12,6 +12,7 @@ import {
   Square,
   AlertCircle,
   RefreshCw,
+  ListPlus,
 } from 'lucide-react';
 import { isAuthError, handleAuthError } from '@/lib/auth-error-handler';
 
@@ -257,6 +258,71 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
     }
   };
 
+  // Add all files from current folder to upload queue
+  const handleEnqueueAll = async () => {
+    if (totalCount === 0) return;
+
+    setUploading(true);
+    setUploadProgress('Adding all files from folder to queue...');
+
+    try {
+      const response = await fetch('/api/queue', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          folderId: currentFolderId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.error || 'Failed to add files to queue';
+
+        // Check if this is an authentication error
+        if (response.status === 401 && isAuthError(errorMessage)) {
+          // Sign out and redirect to login
+          await handleAuthError();
+          return; // Exit early, user will be redirected
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+
+      setUploadProgress(
+        `Added ${result.addedCount} file(s) to queue. ${result.skippedCount} skipped (already in queue or synced).`
+      );
+
+      // Update queued files state with newly added files
+      if (result.added && result.added.length > 0) {
+        const newQueuedIds = result.added.map(
+          (item: { driveFileId: string }) => item.driveFileId
+        );
+        setQueuedFiles(prev => new Set([...prev, ...newQueuedIds]));
+      }
+
+      // Clear message after 3 seconds
+      setTimeout(() => {
+        setUploadProgress(null);
+      }, 3000);
+    } catch (err) {
+      setUploadProgress(
+        `Error: ${err instanceof Error ? err.message : 'Unknown error occurred'}`
+      );
+      console.error('Error enqueueing all files:', err);
+
+      // Clear error after 5 seconds
+      setTimeout(() => {
+        setUploadProgress(null);
+      }, 5000);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   // Combine folders and files for display
   const items = [...folders, ...files];
 
@@ -323,6 +389,14 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
             >
               <Square className="h-4 w-4" />
               Deselect All
+            </button>
+            <button
+              onClick={handleEnqueueAll}
+              disabled={files.length === 0 || uploading}
+              className="flex items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ListPlus className="h-4 w-4" />
+              Enqueue All
             </button>
           </div>
         </div>
