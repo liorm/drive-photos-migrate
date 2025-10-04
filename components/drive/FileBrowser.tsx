@@ -13,6 +13,7 @@ import {
   AlertCircle,
   RefreshCw,
 } from 'lucide-react';
+import { isAuthError, handleAuthError } from '@/lib/auth-error-handler';
 
 interface FileBrowserProps {
   initialFolderId?: string;
@@ -69,7 +70,16 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
 
         if (!response.ok) {
           const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to fetch files');
+          const errorMessage = errorData.error || 'Failed to fetch files';
+
+          // Check if this is an authentication error
+          if (response.status === 401 && isAuthError(errorMessage)) {
+            // Sign out and redirect to login
+            await handleAuthError();
+            return; // Exit early, user will be redirected
+          }
+
+          throw new Error(errorMessage);
         }
 
         const data: ApiResponse = await response.json();
@@ -193,7 +203,16 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to upload files');
+        const errorMessage = errorData.error || 'Failed to upload files';
+
+        // Check if this is an authentication error
+        if (response.status === 401 && isAuthError(errorMessage)) {
+          // Sign out and redirect to login
+          await handleAuthError();
+          return; // Exit early, user will be redirected
+        }
+
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();

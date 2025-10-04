@@ -17,6 +17,9 @@ export default function Sidebar() {
   const { data: session } = useSession();
   const [isOpen, setIsOpen] = useState(false);
 
+  // Treat sessions with errors as logged out
+  const isValidSession = session && !session.error;
+
   return (
     <>
       {/* Mobile Menu Button */}
@@ -80,7 +83,7 @@ export default function Sidebar() {
 
         {/* Auth Section at Bottom */}
         <div className="border-t border-gray-200 bg-gray-50 px-3 py-4">
-          {session ? (
+          {isValidSession ? (
             <div className="space-y-3">
               <div className="flex items-center gap-3 rounded-lg bg-white p-2">
                 {session.user?.image ? (
