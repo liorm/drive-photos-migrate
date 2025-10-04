@@ -206,7 +206,7 @@ async function createMediaItemSingle(
 /**
  * Batch create multiple media items from upload tokens
  */
-async function batchCreateMediaItems(
+export async function batchCreateMediaItems(
   accessToken: string,
   items: Array<{ uploadToken: string; fileName: string }>,
   operationId?: string

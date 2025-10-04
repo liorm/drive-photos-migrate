@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import {
-  addToQueue,
-  getQueue,
-  getQueueStats,
-  getCachedFileMetadata,
-} from '@/lib/upload-queue-db';
-import { getDriveFile } from '@/lib/google-drive';
-import { getAllCachedFileIds, getFileMetadataFromDriveCache } from '@/lib/db';
+import { getQueue, getQueueStats } from '@/lib/upload-queue-db';
+import { getAllCachedFileIds } from '@/lib/db';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
 import operationStatusManager, { OperationType } from '@/lib/operation-status';
+import uploadsManager from '@/lib/uploads-manager';
 
 const logger = createLogger('api:queue');
 
@@ -29,155 +24,25 @@ async function processFilesAsync(
   accessToken: string,
   requestId: string
 ): Promise<void> {
-  const allAdded: Array<{
-    driveFileId: string;
-    fileName: string;
-    mimeType: string;
-  }> = [];
-  const allSkipped: Array<{ driveFileId: string; reason: string }> = [];
-
   try {
-    // Process files one at a time, adding to queue incrementally
-    for (let i = 0; i < fileIds.length; i++) {
-      const fileId = fileIds[i];
-
-      // Update progress
-      operationStatusManager.updateProgress(operationId, i, fileIds.length);
-
-      try {
-        let fileName: string;
-        let mimeType: string;
-        let fileSize: number | undefined;
-
-        // Try Drive cache first (from folder browsing)
-        const driveCacheMetadata = getFileMetadataFromDriveCache(
-          userEmail,
-          fileId
-        );
-
-        if (driveCacheMetadata) {
-          logger.debug('Using Drive cache metadata', {
-            requestId,
-            userEmail,
-            fileId,
-            fileName: driveCacheMetadata.fileName,
-          });
-
-          fileName = driveCacheMetadata.fileName;
-          mimeType = driveCacheMetadata.mimeType;
-          fileSize = driveCacheMetadata.fileSize;
-        } else {
-          // Try queue cache next (from previous queue operations)
-          const queueCacheMetadata = await getCachedFileMetadata(
-            userEmail,
-            fileId
-          );
-
-          if (queueCacheMetadata) {
-            logger.debug('Using queue cache metadata', {
-              requestId,
-              userEmail,
-              fileId,
-              fileName: queueCacheMetadata.fileName,
-            });
-
-            fileName = queueCacheMetadata.fileName;
-            mimeType = queueCacheMetadata.mimeType;
-            fileSize = queueCacheMetadata.fileSize;
-          } else {
-            // Cache miss - fetch from Google Drive API
-            logger.debug('Fetching file metadata from Drive API', {
-              requestId,
-              userEmail,
-              fileId,
-            });
-
-            const fileMetadata = await getDriveFile(accessToken, fileId);
-
-            if (!fileMetadata.name || !fileMetadata.mimeType) {
-              logger.warn('File metadata incomplete, skipping', {
-                requestId,
-                userEmail,
-                fileId,
-              });
-              allSkipped.push({
-                driveFileId: fileId,
-                reason: 'Incomplete metadata',
-              });
-              continue;
-            }
-
-            fileName = fileMetadata.name;
-            mimeType = fileMetadata.mimeType;
-            fileSize = fileMetadata.size
-              ? parseInt(fileMetadata.size)
-              : undefined;
-
-            logger.debug('File metadata fetched from Drive API', {
-              requestId,
-              userEmail,
-              fileId,
-              fileName,
-            });
-          }
-        }
-
-        // Add this file to queue immediately
-        const result = await addToQueue(userEmail, [
-          {
-            driveFileId: fileId,
-            fileName,
-            mimeType,
-            fileSize,
-          },
-        ]);
-
-        // Track results
-        allAdded.push(...result.added);
-        allSkipped.push(...result.skipped);
-
-        logger.debug('File processed and added to queue', {
-          requestId,
-          userEmail,
-          fileId,
-          added: result.added.length > 0,
-        });
-
-        // Small delay to yield control and allow SSE updates to be sent
-        // Even cached operations need time for the client to see updates
-        await new Promise(resolve => setImmediate(resolve));
-      } catch (error) {
-        logger.error('Error processing file', error, {
-          requestId,
-          userEmail,
-          fileId,
-        });
-        allSkipped.push({
-          driveFileId: fileId,
-          reason: error instanceof Error ? error.message : 'Unknown error',
-        });
-        // Continue with other files even if one fails
-      }
-    }
-
-    // Update final progress
-    operationStatusManager.updateProgress(
-      operationId,
-      fileIds.length,
-      fileIds.length
+    const result = await uploadsManager.addToQueue(
+      userEmail,
+      accessToken,
+      fileIds,
+      operationId
     );
 
     logger.info('Async file processing completed', {
       requestId,
       userEmail,
-      addedCount: allAdded.length,
-      skippedCount: allSkipped.length,
+      addedCount: result.added.length,
+      skippedCount: result.skipped.length,
     });
 
     // Complete operation with results
     operationStatusManager.completeOperation(operationId, {
-      addedCount: allAdded.length,
-      skippedCount: allSkipped.length,
+      addedCount: result.added.length,
+      skippedCount: result.skipped.length,
       totalProcessed: fileIds.length,
     });
   } catch (error) {
@@ -360,139 +225,19 @@ async function handlePOST(request: NextRequest) {
   }
 
   // For small operations (<10 files), process synchronously
-  const allAdded: Array<{
-    driveFileId: string;
-    fileName: string;
-    mimeType: string;
-  }> = [];
-  const allSkipped: Array<{ driveFileId: string; reason: string }> = [];
-
   try {
-    // Process files one at a time, adding to queue incrementally
-    for (let i = 0; i < fileIds.length; i++) {
-      const fileId = fileIds[i];
+    const result = await uploadsManager.addToQueue(
+      userEmail,
+      session.accessToken,
+      fileIds
+    );
 
-      try {
-        let fileName: string;
-        let mimeType: string;
-        let fileSize: number | undefined;
-
-        // Try Drive cache first (from folder browsing)
-        const driveCacheMetadata = getFileMetadataFromDriveCache(
-          userEmail,
-          fileId
-        );
-
-        if (driveCacheMetadata) {
-          logger.debug('Using Drive cache metadata', {
-            requestId,
-            userEmail,
-            fileId,
-            fileName: driveCacheMetadata.fileName,
-          });
-
-          fileName = driveCacheMetadata.fileName;
-          mimeType = driveCacheMetadata.mimeType;
-          fileSize = driveCacheMetadata.fileSize;
-        } else {
-          // Try queue cache next (from previous queue operations)
-          const queueCacheMetadata = await getCachedFileMetadata(
-            userEmail,
-            fileId
-          );
-
-          if (queueCacheMetadata) {
-            logger.debug('Using queue cache metadata', {
-              requestId,
-              userEmail,
-              fileId,
-              fileName: queueCacheMetadata.fileName,
-            });
-
-            fileName = queueCacheMetadata.fileName;
-            mimeType = queueCacheMetadata.mimeType;
-            fileSize = queueCacheMetadata.fileSize;
-          } else {
-            // Cache miss - fetch from Google Drive API
-            logger.debug('Fetching file metadata from Drive API', {
-              requestId,
-              userEmail,
-              fileId,
-            });
-
-            const fileMetadata = await getDriveFile(
-              session.accessToken,
-              fileId
-            );
-
-            if (!fileMetadata.name || !fileMetadata.mimeType) {
-              logger.warn('File metadata incomplete, skipping', {
-                requestId,
-                userEmail,
-                fileId,
-              });
-              allSkipped.push({
-                driveFileId: fileId,
-                reason: 'Incomplete metadata',
-              });
-              continue;
-            }
-
-            fileName = fileMetadata.name;
-            mimeType = fileMetadata.mimeType;
-            fileSize = fileMetadata.size
-              ? parseInt(fileMetadata.size)
-              : undefined;
-
-            logger.debug('File metadata fetched from Drive API', {
-              requestId,
-              userEmail,
-              fileId,
-              fileName,
-            });
-          }
-        }
-
-        // Add this file to queue immediately
-        const result = await addToQueue(userEmail, [
-          {
-            driveFileId: fileId,
-            fileName,
-            mimeType,
-            fileSize,
-          },
-        ]);
-
-        // Track results
-        allAdded.push(...result.added);
-        allSkipped.push(...result.skipped);
-
-        logger.debug('File processed and added to queue', {
-          requestId,
-          userEmail,
-          fileId,
-          added: result.added.length > 0,
-        });
-      } catch (error) {
-        logger.error('Error processing file', error, {
-          requestId,
-          userEmail,
-          fileId,
-        });
-        allSkipped.push({
-          driveFileId: fileId,
-          reason: error instanceof Error ? error.message : 'Unknown error',
-        });
-        // Continue with other files even if one fails
-      }
-    }
-
-    if (allAdded.length === 0 && allSkipped.length === fileIds.length) {
+    if (result.added.length === 0 && result.skipped.length === fileIds.length) {
       logger.warn('No files were added to queue', { requestId, userEmail });
       return NextResponse.json(
         {
           error: 'No files could be added to queue',
-          skipped: allSkipped,
+          skipped: result.skipped,
         },
         { status: 400 }
       );
@@ -501,16 +246,16 @@ async function handlePOST(request: NextRequest) {
     logger.info('Add to queue request completed (sync)', {
       requestId,
       userEmail,
-      addedCount: allAdded.length,
-      skippedCount: allSkipped.length,
+      addedCount: result.added.length,
+      skippedCount: result.skipped.length,
     });
 
     return NextResponse.json({
       success: true,
-      added: allAdded,
-      skipped: allSkipped,
-      addedCount: allAdded.length,
-      skippedCount: allSkipped.length,
+      added: result.added,
+      skipped: result.skipped,
+      addedCount: result.added.length,
+      skippedCount: result.skipped.length,
     });
   } catch (error) {
     logger.error('Error adding files to queue', error, {

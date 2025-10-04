@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { processQueue, requestStopProcessing } from '@/lib/queue-processor';
-import { failUploadingItems } from '@/lib/upload-queue-db';
-import operationStatusManager from '@/lib/operation-status';
+import uploadsManager from '@/lib/uploads-manager';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
 
@@ -44,7 +42,7 @@ async function handlePOST(_request: NextRequest) {
 
   // Start processing queue in the background
   // Don't await - let it run asynchronously
-  processQueue(userEmail, accessToken).catch(error => {
+  uploadsManager.startProcessing(userEmail, accessToken).catch(error => {
     logger.error('Error processing queue', error, {
       requestId,
       userEmail,
@@ -77,44 +75,9 @@ async function handleDELETE(_request: NextRequest) {
   const userEmail = session.user.email;
 
   logger.info('Stop processing request received', { requestId, userEmail });
-  requestStopProcessing(userEmail);
 
-  // Mark any currently uploading items as failed so UI reflects the stop.
-  try {
-    const failedCount = await failUploadingItems(
-      userEmail,
-      'Processing stopped by user'
-    );
-
-    logger.info('Failing uploading items due to stop request', {
-      requestId,
-      userEmail,
-      failedCount,
-    });
-  } catch (err) {
-    logger.warn('Failed to mark uploading items as failed', {
-      requestId,
-      userEmail,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  // Fail any active long-write operation for this user
-  try {
-    // Iterate all operations and fail those matching userEmail
-    const allOps = operationStatusManager.getAllOperations();
-    allOps.forEach(op => {
-      if (op.metadata?.userEmail === userEmail && op.status === 'in_progress') {
-        operationStatusManager.failOperation(op.id, 'Stopped by user');
-      }
-    });
-  } catch (err) {
-    logger.warn('Failed to update operation status for stop request', {
-      requestId,
-      userEmail,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
+  // Delegate to UploadsManager
+  uploadsManager.stopProcessing(userEmail);
 
   return NextResponse.json({ success: true, message: 'Stop requested' });
 }

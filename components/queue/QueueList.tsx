@@ -22,7 +22,7 @@ export function QueueList({ items, onRemove }: QueueListProps) {
   ) => {
     if (sectionItems.length === 0) return null;
 
-    const DISPLAY_LIMIT = 20;
+    const DISPLAY_LIMIT = 40;
     const displayItems = sectionItems.slice(0, DISPLAY_LIMIT);
     const hiddenCount = sectionItems.length - DISPLAY_LIMIT;
     const hasHiddenItems = hiddenCount > 0;

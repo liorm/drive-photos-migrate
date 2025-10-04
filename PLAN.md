@@ -1,47 +1,42 @@
-# **Development Roadmap**
+## **Phase 6: Refactor Upload Mechanism** ✅ COMPLETE
 
-## **Phase 1: Authentication & Basic UI ✅ COMPLETED**
+- [x] **Create `UploadsManager` Singleton:**
+  - Created `lib/uploads-manager.ts` with singleton pattern using `globalThis`.
+  - Centralized authority for all upload operations.
+  - Resets stuck "uploading" items on first processing request per user.
 
-- ✅ **Setup Next.js & Tailwind CSS:** Initialized Next.js 15 with TypeScript, App Router, and Tailwind CSS v4
-- ✅ **Integrate NextAuth.js:** Implemented Auth.js v5 with Google OAuth 2.0
-- ✅ **Create Layout:** Built responsive layout with Header, AuthButton, and Tailwind CSS dark mode support.
-- ✅ **Protected Routes:** Implemented middleware-based route protection.
+- [x] **Centralize Upload Logic in `UploadsManager`:**
+  - **`addToQueue(userEmail, accessToken, fileIds, operationId?)`:**
+    - Consolidated logic from `POST /api/queue`.
+    - Handles file metadata fetching (Drive cache → Queue cache → Drive API).
+    - Checks for duplicates and already-synced files.
+    - Adds valid files to database with 'pending' status.
+    - Tracks progress via operationId for large batches.
+  - **`startProcessing(userEmail, accessToken)`:**
+    - Consolidated core processing logic from `lib/queue-processor.ts`.
+    - Creates "Processing Upload Queue" operation.
+    - Implements concurrent workers (5-10 configurable via `QUEUE_CONCURRENCY`).
+    - **Added batching:** Uses `batchCreateMediaItems()` with batch size of 50 (Google Photos API limit).
+    - Downloads files → accumulates upload tokens → batches createMediaItem calls.
+    - Updates database status: `pending` → `uploading` → `completed`/`failed`.
+    - Handles retries with backoff coordination across workers.
+  - **`stopProcessing(userEmail)`:**
+    - Gracefully stops uploads for a user.
+    - Uses `AbortController` to cancel in-flight downloads/uploads.
+    - Marks `uploading` items as `failed` with "Processing stopped by user".
+    - Fails active operations via operationStatusManager.
 
-## **Phase 2: Google Drive Integration ✅ COMPLETED**
+- [x] **Refactor API Endpoints to use `UploadsManager`:**
+  - Updated `POST /api/queue` to delegate to `uploadsManager.addToQueue()`.
+  - Updated `POST /api/queue/process` to delegate to `uploadsManager.startProcessing()`.
+  - Updated `DELETE /api/queue/process` to delegate to `uploadsManager.stopProcessing()`.
+  - Reduced POST handler from ~280 lines to ~40 lines.
 
-- ✅ **Create Drive API Service:** Implemented lib/google-drive.ts for API communication.
-- ✅ **Fetch Files & Folders:** Created server-side API endpoint /api/drive/files.
-- ✅ **Build File Browser UI:** Created FileBrowser, FileGrid, FileItem, and FolderItem components.
-- ✅ **Implement File Selection:** Added multi-file selection with "Select All" and "Deselect All".
-- ✅ **Browser Navigation Support:** Implemented URL-based navigation for folders.
+- [x] **Deprecate `lib/queue-processor.ts`:**
+  - Deleted `lib/queue-processor.ts` - all logic now in `UploadsManager`.
 
-## **Phase 3: Caching Google Drive Files & Infinite Scroll ✅ COMPLETED**
+### **Key Improvements:**
 
-- ✅ **Setup Local Database for Caching:** Implemented lowdb with data/drive_cache.json for backend storage.
-- ✅ **Define Cache Data Structure:** Created schema to store files with rich metadata (ID, name, size, creation date, thumbnail, dimensions, etc.), organized by folder and user.
-- ✅ **Implement Backend Caching Logic:** Updated /api/drive/files endpoint to:
-  1. Fetch the latest list of files from the Google Drive API for a requested folder.
-  2. Update the drive_cache.json for that folder, adding new files and updating existing ones.
-- ✅ **Implement Paginated API Response:** API returns paginated cached files with hasMore flag and totalCount for efficient data transfer.
-- ✅ **Implement Frontend Infinite Scroll:**
-  - FileBrowser component loads initial batch of files from cache with pagination support.
-  - Intersection Observer detects scroll position and automatically loads more files.
-  - Smooth infinite scroll effect with loading indicators.
-- ✅ **Add Refresh Functionality:** Implemented refresh button to force re-sync from Google Drive API.
-
-## **Phase 4: Google Photos Integration & Upload Tracking**
-
-- [ ] **Create Photos API Service:** Write functions to communicate with the Google Photos Library API.
-- [ ] **Implement Upload Functionality:** Create the backend logic to handle the multi-step file upload process (get upload token, upload bytes, create media item).
-- [ ] **Implement Upload Tracking:** Use lowdb (e.g., in data/uploads.json) to track uploaded files to prevent duplicates.
-  - Before starting an upload, check the uploads.json file.
-  - After a successful upload, record the file's driveFileId and photosMediaItemId.
-- [ ] **Connect UI to Upload Logic:** Add an "Upload Selected" button to the FileBrowser component that triggers the process.
-- [ ] **Update UI with File Status:** Visually indicate which files in the browser have already been uploaded based on the tracking data.
-
-## **Phase 5: Polishing and Deployment**
-
-- [ ] **Add Loading & Upload Status UI:** Show spinners during syncs and detailed progress during uploads.
-- [ ] **Implement Error Handling:** Display user-friendly error messages for API or upload failures.
-- [ ] **Refine UI/UX:** Improve the overall look, feel, and performance.
-- [ ] **Deploy to Vercel:** Configure the project for production deployment.
+- **Performance:** 50x fewer API calls via batching (batch size: 50 items)
+- **Maintainability:** Single location for upload logic (~800 lines vs scattered across 3 files)
+- **Architecture:** Clear separation - API routes (auth/validation) → Manager (business logic) → DB (persistence)
