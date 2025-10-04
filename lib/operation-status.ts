@@ -323,8 +323,22 @@ class OperationStatusManager extends EventEmitter {
   }
 }
 
-// Singleton instance
-const operationStatusManager = new OperationStatusManager();
+// Global singleton instance using globalThis to ensure it's shared across all Next.js API routes
+// This prevents module isolation issues where different routes get separate instances
+declare global {
+  // eslint-disable-next-line no-var
+  var __operationStatusManager: OperationStatusManager | undefined;
+}
+
+function getOperationStatusManager(): OperationStatusManager {
+  if (!globalThis.__operationStatusManager) {
+    logger.info('Creating new OperationStatusManager singleton');
+    globalThis.__operationStatusManager = new OperationStatusManager();
+  }
+  return globalThis.__operationStatusManager;
+}
+
+const operationStatusManager = getOperationStatusManager();
 
 export default operationStatusManager;
 
