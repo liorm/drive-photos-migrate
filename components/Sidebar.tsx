@@ -1,6 +1,14 @@
 'use client';
 
-import { Home, FolderOpen, X, LogOut, LogIn, Menu, ListOrdered } from 'lucide-react';
+import {
+  Home,
+  FolderOpen,
+  X,
+  LogOut,
+  LogIn,
+  Menu,
+  ListOrdered,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession, signIn, signOut } from 'next-auth/react';

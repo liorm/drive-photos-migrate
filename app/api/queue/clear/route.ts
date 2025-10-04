@@ -9,7 +9,7 @@ const logger = createLogger('api:queue:clear');
 /**
  * DELETE /api/queue/clear - Clear completed and failed items from queue
  */
-async function handleDELETE(request: NextRequest) {
+async function handleDELETE(_request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7);
 
   // Get session

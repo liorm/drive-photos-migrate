@@ -1,8 +1,5 @@
 import { NextResponse } from 'next/server';
-import operationStatusManager, {
-  OperationType,
-  OperationStatus,
-} from '@/lib/operation-status';
+import operationStatusManager, { OperationType } from '@/lib/operation-status';
 
 /**
  * Test endpoint to create a mock operation for debugging notifications

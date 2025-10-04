@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
       const encoder = new TextEncoder();
 
       // Helper to send SSE message
-      const sendEvent = (event: string, data: any) => {
+      const sendEvent = (event: string, data: unknown) => {
         const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
         controller.enqueue(encoder.encode(message));
       };

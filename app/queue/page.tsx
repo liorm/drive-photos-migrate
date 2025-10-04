@@ -3,13 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { QueueItem as QueueItemType } from '@/types/upload-queue';
 import { QueueList } from '@/components/queue/QueueList';
-import {
-  Play,
-  Trash2,
-  RefreshCw,
-  Loader2,
-  AlertCircle,
-} from 'lucide-react';
+import { Play, Trash2, RefreshCw, Loader2, AlertCircle } from 'lucide-react';
 import { isAuthError, handleAuthError } from '@/lib/auth-error-handler';
 
 interface QueueStats {
@@ -57,13 +51,15 @@ export default function QueuePage() {
 
       const data = await response.json();
       setQueue(data.queue || []);
-      setStats(data.stats || {
-        total: 0,
-        pending: 0,
-        uploading: 0,
-        completed: 0,
-        failed: 0,
-      });
+      setStats(
+        data.stats || {
+          total: 0,
+          pending: 0,
+          uploading: 0,
+          completed: 0,
+          failed: 0,
+        }
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
       console.error('Error fetching queue:', err);
@@ -251,9 +247,7 @@ export default function QueuePage() {
 
           <button
             onClick={handleClear}
-            disabled={
-              (stats.completed === 0 && stats.failed === 0) || clearing
-            }
+            disabled={(stats.completed === 0 && stats.failed === 0) || clearing}
             className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {clearing ? (
@@ -275,9 +269,7 @@ export default function QueuePage() {
           disabled={loading}
           className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <RefreshCw
-            className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
-          />
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </button>
       </div>

@@ -39,8 +39,11 @@ function isRetryableError(error: Error): boolean {
   }
 
   // Handle Response objects from fetch
-  if ('status' in error && typeof (error as any).status === 'number') {
-    const status = (error as any).status;
+  if (
+    'status' in error &&
+    typeof (error as { status?: unknown }).status === 'number'
+  ) {
+    const status = (error as { status: number }).status;
     if (status === 429) return true;
     if (status >= 500 && status < 600) return true;
     if (status >= 400 && status < 500) return false;

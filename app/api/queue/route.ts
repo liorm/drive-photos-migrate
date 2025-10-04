@@ -14,7 +14,7 @@ interface AddToQueueRequestBody {
 /**
  * GET /api/queue - Get upload queue for current user
  */
-async function handleGET(request: NextRequest) {
+async function handleGET(_request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7);
 
   // Get session

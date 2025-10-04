@@ -1,7 +1,11 @@
 import { Low } from 'lowdb';
 import { JSONFile } from 'lowdb/node';
 import path from 'path';
-import { UploadQueueData, QueueItem, QueueItemStatus } from '@/types/upload-queue';
+import {
+  UploadQueueData,
+  QueueItem,
+  QueueItemStatus,
+} from '@/types/upload-queue';
 import { isFileUploaded } from './uploads-db';
 import { createLogger } from '@/lib/logger';
 
@@ -253,7 +257,9 @@ export async function removeFromQueue(
   const items = db.data.users[userEmail].items;
   const initialLength = items.length;
 
-  db.data.users[userEmail].items = items.filter(item => item.id !== queueItemId);
+  db.data.users[userEmail].items = items.filter(
+    item => item.id !== queueItemId
+  );
 
   if (db.data.users[userEmail].items.length < initialLength) {
     await db.write();

@@ -41,7 +41,7 @@ export interface Operation {
   error?: OperationError;
   startedAt: Date;
   completedAt?: Date;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface OperationUpdate {
@@ -49,7 +49,7 @@ export interface OperationUpdate {
   progress?: Partial<OperationProgress>;
   error?: Partial<OperationError>;
   completedAt?: Date;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -69,7 +69,7 @@ class OperationStatusManager extends EventEmitter {
     options?: {
       description?: string;
       total?: number;
-      metadata?: Record<string, any>;
+      metadata?: Record<string, unknown>;
     }
   ): string {
     const id = `op-${this.nextId++}-${Date.now()}`;
@@ -226,7 +226,7 @@ class OperationStatusManager extends EventEmitter {
   /**
    * Marks an operation as completed successfully
    */
-  completeOperation(id: string, metadata?: Record<string, any>): void {
+  completeOperation(id: string, metadata?: Record<string, unknown>): void {
     this.updateOperation(id, {
       status: OperationStatus.COMPLETED,
       completedAt: new Date(),
@@ -326,7 +326,6 @@ class OperationStatusManager extends EventEmitter {
 // Global singleton instance using globalThis to ensure it's shared across all Next.js API routes
 // This prevents module isolation issues where different routes get separate instances
 declare global {
-  // eslint-disable-next-line no-var
   var __operationStatusManager: OperationStatusManager | undefined;
 }
 
@@ -352,7 +351,7 @@ export async function trackOperation<T>(
   options?: {
     description?: string;
     total?: number;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }
 ): Promise<T> {
   const operationId = operationStatusManager.createOperation(

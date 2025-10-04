@@ -9,7 +9,7 @@ const logger = createLogger('api:queue:process');
 /**
  * POST /api/queue/process - Start processing the upload queue
  */
-async function handlePOST(request: NextRequest) {
+async function handlePOST(_request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7);
 
   // Get session

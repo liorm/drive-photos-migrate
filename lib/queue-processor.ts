@@ -1,16 +1,9 @@
-import {
-  getQueueByStatus,
-  updateQueueItem,
-  removeFromQueue,
-} from './upload-queue-db';
+import { getQueueByStatus, updateQueueItem } from './upload-queue-db';
 import { downloadDriveFile, uploadFileToPhotos } from './google-photos';
 import { recordUpload } from './uploads-db';
 import { clearFileSyncStatusCache } from './sync-status';
 import { createLogger } from './logger';
-import operationStatusManager, {
-  OperationType,
-  OperationStatus,
-} from './operation-status';
+import operationStatusManager, { OperationType } from './operation-status';
 
 const logger = createLogger('queue-processor');
 
@@ -80,7 +73,11 @@ export async function processQueue(
       });
 
       // Update operation progress
-      operationStatusManager.updateProgress(operationId, i, pendingItems.length);
+      operationStatusManager.updateProgress(
+        operationId,
+        i,
+        pendingItems.length
+      );
 
       try {
         // Update item status to uploading

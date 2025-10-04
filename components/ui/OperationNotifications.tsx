@@ -12,6 +12,13 @@ interface NotificationItemProps {
 function NotificationItem({ operation, onDismiss }: NotificationItemProps) {
   const [isExiting, setIsExiting] = useState(false);
 
+  const handleDismiss = useCallback(() => {
+    setIsExiting(true);
+    setTimeout(() => {
+      onDismiss(operation.id);
+    }, 300); // Match animation duration
+  }, [onDismiss, operation.id]);
+
   // Auto-dismiss completed operations after 5 seconds
   useEffect(() => {
     if (operation.status === OperationStatus.COMPLETED) {
@@ -20,14 +27,7 @@ function NotificationItem({ operation, onDismiss }: NotificationItemProps) {
       }, 5000);
       return () => clearTimeout(timer);
     }
-  }, [operation.status]);
-
-  const handleDismiss = () => {
-    setIsExiting(true);
-    setTimeout(() => {
-      onDismiss(operation.id);
-    }, 300); // Match animation duration
-  };
+  }, [operation.status, handleDismiss]);
 
   const getIcon = () => {
     switch (operation.status) {
@@ -147,25 +147,21 @@ export function OperationNotifications() {
   }, []);
 
   useEffect(() => {
-    console.log('[OperationNotifications] Connecting to SSE...');
     // Connect to SSE endpoint for real-time updates
     const eventSource = new EventSource('/api/operations/stream');
 
     eventSource.addEventListener('connected', event => {
       const data = JSON.parse(event.data);
-      console.log('[OperationNotifications] SSE Connected, initial operations:', data.operations);
       setOperations(data.operations || []);
     });
 
     eventSource.addEventListener('operation:created', event => {
       const operation: Operation = JSON.parse(event.data);
-      console.log('[OperationNotifications] Operation created:', operation);
       setOperations(prev => [...prev, operation]);
     });
 
     eventSource.addEventListener('operation:updated', event => {
       const operation: Operation = JSON.parse(event.data);
-      console.log('[OperationNotifications] Operation updated:', operation);
       setOperations(prev =>
         prev.map(op => (op.id === operation.id ? operation : op))
       );
@@ -173,13 +169,11 @@ export function OperationNotifications() {
 
     eventSource.addEventListener('operation:removed', event => {
       const data = JSON.parse(event.data);
-      console.log('[OperationNotifications] Operation removed:', data.id);
       setOperations(prev => prev.filter(op => op.id !== data.id));
     });
 
-    eventSource.addEventListener('heartbeat', event => {
-      const data = JSON.parse(event.data);
-      console.log('[OperationNotifications] Heartbeat:', data.timestamp);
+    eventSource.addEventListener('heartbeat', () => {
+      // Keep connection alive
     });
 
     eventSource.onerror = error => {
@@ -188,13 +182,11 @@ export function OperationNotifications() {
 
       // Retry connection after 5 seconds
       setTimeout(() => {
-        console.log('[OperationNotifications] Reloading page...');
         window.location.reload();
       }, 5000);
     };
 
     return () => {
-      console.log('[OperationNotifications] Disconnecting SSE...');
       eventSource.close();
     };
   }, []);
