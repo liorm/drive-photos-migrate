@@ -7,6 +7,7 @@ import { FolderItem } from './FolderItem';
 interface FileGridProps {
   items: (DriveFile | DriveFolder)[];
   selectedFiles: Set<string>;
+  queuedFiles: Set<string>;
   onToggleSelect: (file: DriveFile) => void;
   onNavigate: (folderId: string) => void;
 }
@@ -14,6 +15,7 @@ interface FileGridProps {
 export function FileGrid({
   items,
   selectedFiles,
+  queuedFiles,
   onToggleSelect,
   onNavigate,
 }: FileGridProps) {
@@ -85,6 +87,7 @@ export function FileGrid({
                 key={file.id}
                 file={file}
                 isSelected={selectedFiles.has(file.id)}
+                isQueued={queuedFiles.has(file.id)}
                 onToggleSelect={onToggleSelect}
               />
             ))}

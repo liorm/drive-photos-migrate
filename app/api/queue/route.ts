@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { addToQueue, getQueue, getQueueStats } from '@/lib/upload-queue-db';
+import {
+  addToQueue,
+  getQueue,
+  getQueueStats,
+  getCachedFileMetadata,
+} from '@/lib/upload-queue-db';
 import { getDriveFile } from '@/lib/google-drive';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
@@ -123,13 +128,33 @@ async function handlePOST(request: NextRequest) {
 
   for (const fileId of fileIds) {
     try {
-      logger.debug('Fetching file metadata', {
+      // Check cache first
+      const cachedMetadata = await getCachedFileMetadata(userEmail, fileId);
+
+      if (cachedMetadata) {
+        logger.debug('Using cached file metadata', {
+          requestId,
+          userEmail,
+          fileId,
+          fileName: cachedMetadata.fileName,
+        });
+
+        filesToAdd.push({
+          driveFileId: fileId,
+          fileName: cachedMetadata.fileName,
+          mimeType: cachedMetadata.mimeType,
+          fileSize: cachedMetadata.fileSize,
+        });
+        continue;
+      }
+
+      // Cache miss - fetch from Google Drive
+      logger.debug('Fetching file metadata from Drive', {
         requestId,
         userEmail,
         fileId,
       });
 
-      // Get file metadata
       const fileMetadata = await getDriveFile(session.accessToken, fileId);
 
       if (!fileMetadata.name || !fileMetadata.mimeType) {

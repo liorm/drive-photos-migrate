@@ -12,6 +12,7 @@ import {
   getCachedFolderSyncStatus,
   calculateFolderSyncStatus,
 } from '@/lib/sync-status';
+import { getQueuedFileIds } from '@/lib/upload-queue-db';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
 
@@ -126,6 +127,9 @@ async function handleGET(request: NextRequest) {
     fileSyncStatuses.set(fileId, uploadRecord !== null ? 'synced' : 'unsynced');
   }
 
+  // Get queued file IDs
+  const queuedFileIds = await getQueuedFileIds(userEmail, fileIds);
+
   // For folders: try to get cached sync status, calculate if not cached
   const folderSyncStatuses = new Map();
   for (const folder of cachedData.folders) {
@@ -175,6 +179,7 @@ async function handleGET(request: NextRequest) {
     hasMore: cachedData.hasMore,
     lastSynced: cachedData.lastSynced,
     folderPath,
+    queuedFileIds: Array.from(queuedFileIds),
   });
 }
 

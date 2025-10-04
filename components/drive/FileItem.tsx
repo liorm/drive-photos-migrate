@@ -1,16 +1,22 @@
 'use client';
 
 import { DriveFile } from '@/types/google-drive';
-import { FileImage, FileVideo, File, CheckCircle2 } from 'lucide-react';
+import { FileImage, FileVideo, File, CheckCircle2, Clock } from 'lucide-react';
 import Image from 'next/image';
 
 interface FileItemProps {
   file: DriveFile;
   isSelected: boolean;
+  isQueued: boolean;
   onToggleSelect: (file: DriveFile) => void;
 }
 
-export function FileItem({ file, isSelected, onToggleSelect }: FileItemProps) {
+export function FileItem({
+  file,
+  isSelected,
+  isQueued,
+  onToggleSelect,
+}: FileItemProps) {
   const isImage = file.mimeType.startsWith('image/');
   const isVideo = file.mimeType.startsWith('video/');
   const isSynced = file.syncStatus === 'synced';
@@ -72,6 +78,14 @@ export function FileItem({ file, isSelected, onToggleSelect }: FileItemProps) {
           <div className="absolute bottom-1 left-1 flex items-center gap-1 rounded-full bg-green-600 px-2 py-0.5 text-xs font-semibold text-white shadow-md">
             <CheckCircle2 className="h-3 w-3" />
             Synced
+          </div>
+        )}
+
+        {/* Queued badge on thumbnail */}
+        {isQueued && !isSynced && (
+          <div className="absolute bottom-1 left-1 flex items-center gap-1 rounded-full bg-orange-600 px-2 py-0.5 text-xs font-semibold text-white shadow-md">
+            <Clock className="h-3 w-3" />
+            Queued
           </div>
         )}
       </div>

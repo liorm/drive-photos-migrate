@@ -335,6 +335,51 @@ export async function clearCompletedItems(userEmail: string): Promise<number> {
 }
 
 /**
+ * Get cached file metadata by driveFileId (from any queue item)
+ */
+export async function getCachedFileMetadata(
+  userEmail: string,
+  driveFileId: string
+): Promise<{
+  fileName: string;
+  mimeType: string;
+  fileSize?: number;
+} | null> {
+  const db = getDatabase();
+
+  const row = db
+    .prepare(
+      `SELECT file_name, mime_type, file_size
+       FROM queue_items
+       WHERE user_email = ? AND drive_file_id = ?
+       LIMIT 1`
+    )
+    .get(userEmail, driveFileId) as
+    | {
+        file_name: string;
+        mime_type: string;
+        file_size: number | null;
+      }
+    | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  logger.debug('Retrieved cached file metadata', {
+    userEmail,
+    driveFileId,
+    fileName: row.file_name,
+  });
+
+  return {
+    fileName: row.file_name,
+    mimeType: row.mime_type,
+    fileSize: row.file_size || undefined,
+  };
+}
+
+/**
  * Get queue statistics
  */
 export async function getQueueStats(userEmail: string): Promise<{
@@ -376,4 +421,40 @@ export async function getQueueStats(userEmail: string): Promise<{
   logger.debug('Retrieved queue statistics', { userEmail, stats });
 
   return stats;
+}
+
+/**
+ * Check which files from a list are in the queue (not completed/failed)
+ * Returns a Set of driveFileIds that are currently queued
+ */
+export async function getQueuedFileIds(
+  userEmail: string,
+  driveFileIds: string[]
+): Promise<Set<string>> {
+  if (driveFileIds.length === 0) {
+    return new Set();
+  }
+
+  const db = getDatabase();
+
+  // Create placeholders for the IN clause
+  const placeholders = driveFileIds.map(() => '?').join(',');
+
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT drive_file_id
+       FROM queue_items
+       WHERE user_email = ? AND drive_file_id IN (${placeholders}) AND status NOT IN ('completed', 'failed')`
+    )
+    .all(userEmail, ...driveFileIds) as Array<{ drive_file_id: string }>;
+
+  const queuedIds = new Set(rows.map(row => row.drive_file_id));
+
+  logger.debug('Retrieved queued file IDs', {
+    userEmail,
+    requestedCount: driveFileIds.length,
+    queuedCount: queuedIds.size,
+  });
+
+  return queuedIds;
 }

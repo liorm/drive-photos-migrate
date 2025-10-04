@@ -26,6 +26,7 @@ interface ApiResponse {
   hasMore: boolean;
   lastSynced?: string;
   folderPath: BreadcrumbItem[];
+  queuedFileIds: string[];
 }
 
 export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
@@ -40,6 +41,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
   const [folders, setFolders] = useState<DriveFolder[]>([]);
   const [folderPath, setFolderPath] = useState<BreadcrumbItem[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [queuedFiles, setQueuedFiles] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,9 +90,14 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
         if (page === 0) {
           setFiles(data.files);
           setFolders(data.folders);
+          setQueuedFiles(new Set(data.queuedFileIds || []));
         } else {
           setFiles(prev => [...prev, ...data.files]);
           // Folders only come on first page
+          // Merge queued files for pagination
+          setQueuedFiles(
+            prev => new Set([...prev, ...(data.queuedFileIds || [])])
+          );
         }
 
         setFolderPath(data.folderPath);
@@ -219,6 +226,14 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
       setUploadProgress(
         `Added ${result.addedCount} file(s) to queue. ${result.skippedCount} skipped (already in queue or synced).`
       );
+
+      // Update queued files state with newly added files
+      if (result.added && result.added.length > 0) {
+        const newQueuedIds = result.added.map(
+          (item: { driveFileId: string }) => item.driveFileId
+        );
+        setQueuedFiles(prev => new Set([...prev, ...newQueuedIds]));
+      }
 
       // Clear selection
       setSelectedFiles(new Set());
@@ -367,6 +382,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
         <FileGrid
           items={items}
           selectedFiles={selectedFiles}
+          queuedFiles={queuedFiles}
           onToggleSelect={handleToggleSelect}
           onNavigate={handleNavigate}
         />
@@ -377,6 +393,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
         <FileGrid
           items={[]}
           selectedFiles={selectedFiles}
+          queuedFiles={queuedFiles}
           onToggleSelect={handleToggleSelect}
           onNavigate={handleNavigate}
         />
