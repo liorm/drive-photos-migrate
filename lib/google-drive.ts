@@ -87,6 +87,45 @@ export async function getDriveFile(accessToken: string, fileId: string) {
 }
 
 /**
+ * Fetch ALL files and folders from a Google Drive folder (across all pages)
+ * @param accessToken - User's OAuth access token
+ * @param folderId - Folder ID to list contents (defaults to root)
+ * @returns All files and folders (not paginated)
+ */
+export async function listAllDriveFiles(
+  accessToken: string,
+  folderId: string = 'root'
+): Promise<{ files: DriveFile[]; folders: DriveFolder[] }> {
+  const allFiles: DriveFile[] = [];
+  const allFolders: DriveFolder[] = [];
+  let pageToken: string | undefined;
+
+  try {
+    do {
+      const response = await listDriveFiles(accessToken, folderId, pageToken);
+
+      // Separate files and folders
+      response.files.forEach(item => {
+        if (item.mimeType === 'application/vnd.google-apps.folder') {
+          allFolders.push(item as DriveFolder);
+        } else {
+          allFiles.push(item as DriveFile);
+        }
+      });
+
+      pageToken = response.nextPageToken;
+    } while (pageToken);
+
+    return { files: allFiles, folders: allFolders };
+  } catch (error) {
+    console.error('Error listing all Drive files:', error);
+    throw new Error(
+      `Failed to list all Drive files: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
+/**
  * Get folder path (breadcrumbs) from root to current folder
  * @param accessToken - User's OAuth access token
  * @param folderId - Current folder ID

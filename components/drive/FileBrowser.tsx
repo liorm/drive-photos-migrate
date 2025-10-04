@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DriveFile, DriveFolder, BreadcrumbItem } from '@/types/google-drive';
 import { FileGrid } from './FileGrid';
@@ -11,6 +11,7 @@ import {
   CheckSquare,
   Square,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 
 interface FileBrowserProps {
@@ -18,35 +19,49 @@ interface FileBrowserProps {
 }
 
 interface ApiResponse {
-  files: (DriveFile | DriveFolder)[];
-  nextPageToken?: string;
+  files: DriveFile[];
+  folders: DriveFolder[];
+  totalCount: number;
+  hasMore: boolean;
+  lastSynced?: string;
   folderPath: BreadcrumbItem[];
 }
 
 export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   // Use URL as source of truth for current folder
   const currentFolderId = searchParams.get('folder') || initialFolderId;
 
-  const [items, setItems] = useState<(DriveFile | DriveFolder)[]>([]);
+  const [files, setFiles] = useState<DriveFile[]>([]);
+  const [folders, setFolders] = useState<DriveFolder[]>([]);
   const [folderPath, setFolderPath] = useState<BreadcrumbItem[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [nextPageToken, setNextPageToken] = useState<string | undefined>();
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
 
   // Fetch files from API
   const fetchFiles = useCallback(
-    async (folderId: string, pageToken?: string) => {
+    async (folderId: string, page: number = 0, refresh: boolean = false) => {
       try {
-        setLoading(true);
+        if (page === 0) {
+          setLoading(true);
+        } else {
+          setLoadingMore(true);
+        }
         setError(null);
 
         const url = new URL('/api/drive/files', window.location.origin);
         url.searchParams.set('folderId', folderId);
-        if (pageToken) url.searchParams.set('pageToken', pageToken);
+        url.searchParams.set('page', page.toString());
+        url.searchParams.set('pageSize', '50');
+        if (refresh) url.searchParams.set('refresh', 'true');
 
         const response = await fetch(url.toString());
 
@@ -57,26 +72,63 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
 
         const data: ApiResponse = await response.json();
 
-        setItems(pageToken ? [...items, ...data.files] : data.files);
+        // Append files if loading more, otherwise replace
+        if (page === 0) {
+          setFiles(data.files);
+          setFolders(data.folders);
+        } else {
+          setFiles(prev => [...prev, ...data.files]);
+          // Folders only come on first page
+        }
+
         setFolderPath(data.folderPath);
-        setNextPageToken(data.nextPageToken);
+        setHasMore(data.hasMore);
+        setTotalCount(data.totalCount);
+        setCurrentPage(page);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error occurred');
         console.error('Error fetching files:', err);
       } finally {
         setLoading(false);
+        setLoadingMore(false);
       }
     },
-    [items]
+    []
   );
 
   // Load files on mount and folder change
   useEffect(() => {
-    fetchFiles(currentFolderId);
+    fetchFiles(currentFolderId, 0);
     // Clear selection when navigating to a new folder
     setSelectedFiles(new Set());
+    setCurrentPage(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentFolderId]);
+
+  // Infinite scroll with Intersection Observer
+  useEffect(() => {
+    if (!hasMore || loading || loadingMore) return;
+
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting) {
+          fetchFiles(currentFolderId, currentPage + 1);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentRef = loadMoreRef.current;
+    if (currentRef) {
+      observer.observe(currentRef);
+    }
+
+    return () => {
+      if (currentRef) {
+        observer.unobserve(currentRef);
+      }
+    };
+  }, [hasMore, loading, loadingMore, currentFolderId, currentPage, fetchFiles]);
 
   // Navigate to folder
   const handleNavigate = (folderId: string) => {
@@ -88,6 +140,11 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
       url.searchParams.set('folder', folderId);
     }
     router.push(url.pathname + url.search);
+  };
+
+  // Refresh folder
+  const handleRefresh = () => {
+    fetchFiles(currentFolderId, 0, true);
   };
 
   // Toggle file selection
@@ -105,10 +162,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
 
   // Select all files
   const handleSelectAll = () => {
-    const allFiles = items.filter(
-      item => item.mimeType !== 'application/vnd.google-apps.folder'
-    ) as DriveFile[];
-    setSelectedFiles(new Set(allFiles.map(f => f.id)));
+    setSelectedFiles(new Set(files.map(f => f.id)));
   };
 
   // Deselect all
@@ -116,16 +170,8 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
     setSelectedFiles(new Set());
   };
 
-  // Load more files
-  const handleLoadMore = () => {
-    if (nextPageToken) {
-      fetchFiles(currentFolderId, nextPageToken);
-    }
-  };
-
-  const fileCount = items.filter(
-    item => item.mimeType !== 'application/vnd.google-apps.folder'
-  ).length;
+  // Combine folders and files for display
+  const items = [...folders, ...files];
 
   return (
     <div className="space-y-4">
@@ -156,12 +202,28 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
         <div className="flex items-center gap-4">
           <div className="text-sm text-gray-700">
             <span className="font-semibold">{selectedFiles.size}</span> of{' '}
-            <span className="font-semibold">{fileCount}</span> files selected
+            <span className="font-semibold">{files.length}</span> files selected
+            {totalCount > 0 && (
+              <span className="ml-2 text-gray-500">
+                ({files.length} of {totalCount - folders.length} loaded)
+              </span>
+            )}
           </div>
           <div className="flex gap-2">
             <button
+              onClick={handleRefresh}
+              disabled={loading}
+              className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Refresh from Google Drive"
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
+              />
+              Refresh
+            </button>
+            <button
               onClick={handleSelectAll}
-              disabled={fileCount === 0}
+              disabled={files.length === 0}
               className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CheckSquare className="h-4 w-4" />
@@ -227,17 +289,22 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
         />
       )}
 
-      {/* Load more button */}
-      {nextPageToken && (
-        <div className="flex justify-center pt-4">
-          <button
-            onClick={handleLoadMore}
-            disabled={loading}
-            className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-6 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-            Load More
-          </button>
+      {/* Infinite scroll trigger */}
+      {hasMore && !loading && (
+        <div ref={loadMoreRef} className="flex justify-center py-8">
+          {loadingMore && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Loading more files...
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* End of list indicator */}
+      {!hasMore && !loading && items.length > 0 && (
+        <div className="py-4 text-center text-sm text-gray-500">
+          All files loaded ({totalCount} total)
         </div>
       )}
     </div>
