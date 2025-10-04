@@ -60,12 +60,28 @@ jobs:
         with:
           node-version: '20'
           cache: ${{ steps.detect-package-manager.outputs.manager }}
+      - name: Debug package manager detection
+        if: always()
+        run: |
+          echo "Detected manager: ${{ steps.detect-package-manager.outputs.manager }}"
+          echo "Detected command: ${{ steps.detect-package-manager.outputs.command }}"
+          echo "Detected runner: ${{ steps.detect-package-manager.outputs.runner }}"
+          echo "Workspace files:"
+          ls -la ${GITHUB_WORKSPACE:-.}
+          if [ -f pnpm-lock.yaml ]; then
+            echo "pnpm-lock.yaml exists"
+          else
+            echo "pnpm-lock.yaml not found"
+          fi
+
       - name: Setup pnpm (when needed)
         if: ${{ steps.detect-package-manager.outputs.manager == 'pnpm' }}
-        uses: pnpm/action-setup@v2
-        with:
-          # Match major pnpm version; adjust if your project requires a different one
-          version: '8'
+        run: |
+          echo "Installing pnpm globally (fallback)"
+          # Ensure npm is available (setup-node already ran). Install pnpm globally so `pnpm` is on PATH.
+          npm install -g pnpm@8
+          echo "pnpm version:"
+          pnpm -v
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:
