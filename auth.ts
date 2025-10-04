@@ -1,10 +1,15 @@
 import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('auth');
 
 /**
  * Refreshes an expired access token using the refresh token
  */
 async function refreshAccessToken(refreshToken: string) {
+  logger.info('Attempting to refresh access token');
+
   try {
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -22,8 +27,15 @@ async function refreshAccessToken(refreshToken: string) {
     const tokens = await response.json();
 
     if (!response.ok) {
+      logger.error('Token refresh failed', new Error(tokens.error), {
+        statusCode: response.status,
+      });
       throw new Error(tokens.error || 'Failed to refresh token');
     }
+
+    logger.info('Access token refreshed successfully', {
+      expiresIn: tokens.expires_in,
+    });
 
     return {
       accessToken: tokens.access_token,
@@ -31,7 +43,7 @@ async function refreshAccessToken(refreshToken: string) {
       refreshToken: tokens.refresh_token ?? refreshToken, // Fall back to old refresh token
     };
   } catch (error) {
-    console.error('Error refreshing access token:', error);
+    logger.error('Error refreshing access token', error);
     throw error;
   }
 }
@@ -76,6 +88,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       try {
         const refreshToken = token.refreshToken as string;
         if (!refreshToken) {
+          logger.warn('No refresh token available for expired access token');
           throw new Error('No refresh token available');
         }
 
@@ -88,7 +101,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           refreshToken: refreshedTokens.refreshToken,
         };
       } catch (error) {
-        console.error('Error refreshing token:', error);
+        logger.error('Error in JWT callback while refreshing token', error);
         // Return token with error flag to trigger re-authentication
         return {
           ...token,

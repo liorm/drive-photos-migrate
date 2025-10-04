@@ -5,6 +5,9 @@ import {
   DriveFolder,
   SUPPORTED_MIME_TYPES,
 } from '@/types/google-drive';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('google-drive');
 
 /**
  * Initialize Google Drive API client with OAuth2 credentials
@@ -28,6 +31,8 @@ export async function listDriveFiles(
   folderId: string = 'root',
   pageToken?: string
 ): Promise<DriveListResponse> {
+  logger.debug('Listing Drive files', { folderId, hasPageToken: !!pageToken });
+
   try {
     const drive = getDriveClient(accessToken);
 
@@ -48,13 +53,20 @@ export async function listDriveFiles(
       orderBy: 'folder,name',
     });
 
+    const fileCount = response.data.files?.length || 0;
+    logger.debug('Drive files listed successfully', {
+      folderId,
+      fileCount,
+      hasMore: !!response.data.nextPageToken,
+    });
+
     return {
       files: (response.data.files || []) as (DriveFile | DriveFolder)[],
       nextPageToken: response.data.nextPageToken || undefined,
       incompleteSearch: response.data.incompleteSearch || false,
     };
   } catch (error) {
-    console.error('Error listing Drive files:', error);
+    logger.error('Error listing Drive files', error, { folderId });
     throw new Error(
       `Failed to list Drive files: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
@@ -68,6 +80,8 @@ export async function listDriveFiles(
  * @returns File metadata
  */
 export async function getDriveFile(accessToken: string, fileId: string) {
+  logger.debug('Getting Drive file metadata', { fileId });
+
   try {
     const drive = getDriveClient(accessToken);
 
@@ -77,9 +91,14 @@ export async function getDriveFile(accessToken: string, fileId: string) {
         'id, name, mimeType, size, thumbnailLink, webContentLink, iconLink, createdTime, modifiedTime, parents',
     });
 
+    logger.debug('Drive file metadata retrieved', {
+      fileId,
+      name: response.data.name,
+    });
+
     return response.data;
   } catch (error) {
-    console.error('Error getting Drive file:', error);
+    logger.error('Error getting Drive file', error, { fileId });
     throw new Error(
       `Failed to get Drive file: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
@@ -96,12 +115,17 @@ export async function listAllDriveFiles(
   accessToken: string,
   folderId: string = 'root'
 ): Promise<{ files: DriveFile[]; folders: DriveFolder[] }> {
+  logger.info('Starting to fetch all Drive files', { folderId });
+  const startTime = Date.now();
+
   const allFiles: DriveFile[] = [];
   const allFolders: DriveFolder[] = [];
   let pageToken: string | undefined;
+  let pageCount = 0;
 
   try {
     do {
+      pageCount++;
       const response = await listDriveFiles(accessToken, folderId, pageToken);
 
       // Separate files and folders
@@ -114,11 +138,35 @@ export async function listAllDriveFiles(
       });
 
       pageToken = response.nextPageToken;
+
+      // Log progress after each page
+      logger.info('Fetched Drive files page', {
+        folderId,
+        pageNumber: pageCount,
+        itemsInPage: response.files.length,
+        totalFilesSoFar: allFiles.length,
+        totalFoldersSoFar: allFolders.length,
+        hasMore: !!pageToken,
+      });
     } while (pageToken);
+
+    const duration = Date.now() - startTime;
+    logger.info('Completed fetching all Drive files', {
+      folderId,
+      totalFiles: allFiles.length,
+      totalFolders: allFolders.length,
+      totalPages: pageCount,
+      durationMs: duration,
+    });
 
     return { files: allFiles, folders: allFolders };
   } catch (error) {
-    console.error('Error listing all Drive files:', error);
+    logger.error('Error listing all Drive files', error, {
+      folderId,
+      filesRetrievedSoFar: allFiles.length,
+      foldersRetrievedSoFar: allFolders.length,
+      pagesProcessed: pageCount,
+    });
     throw new Error(
       `Failed to list all Drive files: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
@@ -135,6 +183,8 @@ export async function getFolderPath(accessToken: string, folderId: string) {
   if (folderId === 'root') {
     return [{ id: 'root', name: 'My Drive' }];
   }
+
+  logger.debug('Getting folder path for breadcrumbs', { folderId });
 
   try {
     const drive = getDriveClient(accessToken);
@@ -162,9 +212,15 @@ export async function getFolderPath(accessToken: string, folderId: string) {
     // Add root at the beginning
     path.unshift({ id: 'root', name: 'My Drive' });
 
+    logger.debug('Folder path retrieved', {
+      folderId,
+      pathDepth: path.length,
+      path: path.map(p => p.name).join(' / '),
+    });
+
     return path;
   } catch (error) {
-    console.error('Error getting folder path:', error);
+    logger.error('Error getting folder path', error, { folderId });
     // Return at least root on error
     return [{ id: 'root', name: 'My Drive' }];
   }

@@ -7,13 +7,19 @@ import {
   syncFolderToCache,
   clearFolderCache,
 } from '@/lib/drive-cache';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('api:drive:files');
 
 export async function GET(request: NextRequest) {
+  const requestId = Math.random().toString(36).substring(7);
+
   try {
     // Get session to retrieve access token
     const session = await auth();
 
     if (!session?.accessToken || !session?.user?.email) {
+      logger.warn('Unauthorized request - No access token', { requestId });
       return NextResponse.json(
         { error: 'Unauthorized - No access token' },
         { status: 401 }
@@ -22,6 +28,10 @@ export async function GET(request: NextRequest) {
 
     // Check if token refresh failed
     if (session.error === 'RefreshAccessTokenError') {
+      logger.warn('Authentication expired', {
+        requestId,
+        userEmail: session.user.email,
+      });
       return NextResponse.json(
         { error: 'Authentication expired - Please sign in again' },
         { status: 401 }
@@ -37,17 +47,44 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '0', 10);
     const pageSize = parseInt(searchParams.get('pageSize') || '50', 10);
 
+    logger.info('Drive files request', {
+      requestId,
+      userEmail,
+      folderId,
+      refresh,
+      page,
+      pageSize,
+    });
+
     // Check if folder is cached and if refresh is requested
     const cached = await isFolderCached(userEmail, folderId);
+
+    logger.info('Cache check result', {
+      requestId,
+      userEmail,
+      folderId,
+      cached,
+      willSync: !cached || refresh,
+    });
 
     // If not cached or refresh requested, sync from Drive API
     if (!cached || refresh) {
       // Clear cache if refreshing
       if (refresh && cached) {
+        logger.info('Refresh requested, clearing cache', {
+          requestId,
+          userEmail,
+          folderId,
+        });
         await clearFolderCache(userEmail, folderId);
       }
 
       // Sync all files from Drive API to cache
+      logger.info('Triggering folder sync', {
+        requestId,
+        userEmail,
+        folderId,
+      });
       await syncFolderToCache(userEmail, folderId, session.accessToken);
     }
 
@@ -60,6 +97,11 @@ export async function GET(request: NextRequest) {
     );
 
     if (!cachedData) {
+      logger.error('Failed to retrieve cached data after sync', undefined, {
+        requestId,
+        userEmail,
+        folderId,
+      });
       return NextResponse.json(
         { error: 'Failed to retrieve cached data' },
         { status: 500 }
@@ -68,6 +110,16 @@ export async function GET(request: NextRequest) {
 
     // Get folder path for breadcrumbs
     const folderPath = await getFolderPath(session.accessToken, folderId);
+
+    logger.info('Request completed successfully', {
+      requestId,
+      userEmail,
+      folderId,
+      filesReturned: cachedData.files.length,
+      foldersReturned: cachedData.folders.length,
+      totalCount: cachedData.totalCount,
+      hasMore: cachedData.hasMore,
+    });
 
     return NextResponse.json({
       files: cachedData.files,
@@ -78,7 +130,7 @@ export async function GET(request: NextRequest) {
       folderPath,
     });
   } catch (error) {
-    console.error('Drive API error:', error);
+    logger.error('Drive API error', error, { requestId });
 
     // Check if it's an authentication error
     if (
@@ -86,11 +138,20 @@ export async function GET(request: NextRequest) {
       (error.message.includes('invalid_grant') ||
         error.message.includes('Invalid Credentials'))
     ) {
+      logger.warn('Authentication error detected', {
+        requestId,
+        errorMessage: error.message,
+      });
       return NextResponse.json(
         { error: 'Authentication expired - Please sign in again' },
         { status: 401 }
       );
     }
+
+    logger.error('Returning error response', error, {
+      requestId,
+      statusCode: 500,
+    });
 
     return NextResponse.json(
       {
