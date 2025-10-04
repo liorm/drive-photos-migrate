@@ -145,7 +145,7 @@ async function processFilesAsync(
 
         // Small delay to yield control and allow SSE updates to be sent
         // Even cached operations need time for the client to see updates
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise(resolve => setImmediate(resolve));
       } catch (error) {
         logger.error('Error processing file', error, {
           requestId,
