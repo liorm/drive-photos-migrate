@@ -414,7 +414,7 @@ export async function processQueue(
     if (controller) {
       try {
         controller.abort();
-      } catch (e) {
+      } catch {
         // ignore
       }
       activeControllers.delete(userEmail);

@@ -44,7 +44,7 @@ export async function uploadFileToPhotos(
   );
 
   // Step 2: Create media item from upload token
-  const mediaItemId = await createMediaItem(
+  const mediaItemId = await createMediaItemSingle(
     accessToken,
     uploadToken,
     fileName,
@@ -123,9 +123,9 @@ async function uploadBytes(
 }
 
 /**
- * Step 2: Create media item from upload token
+ * Step 2: Create media item from upload token (single item)
  */
-async function createMediaItem(
+async function createMediaItemSingle(
   accessToken: string,
   uploadToken: string,
   fileName: string,
@@ -204,7 +204,103 @@ async function createMediaItem(
 }
 
 /**
+ * Batch create multiple media items from upload tokens
+ */
+async function batchCreateMediaItems(
+  accessToken: string,
+  items: Array<{ uploadToken: string; fileName: string }>,
+  operationId?: string
+): Promise<
+  Array<{
+    success: boolean;
+    mediaItemId?: string;
+    fileName: string;
+    error?: string;
+  }>
+> {
+  logger.debug('Batch creating media items', { count: items.length });
+
+  const requestBody: CreateMediaItemRequest = {
+    newMediaItems: items.map(item => ({
+      simpleMediaItem: {
+        uploadToken: item.uploadToken,
+        fileName: item.fileName,
+      },
+    })),
+  };
+
+  const response = await fetchWithRetry(
+    `${PHOTOS_API_BASE}/mediaItems:batchCreate`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    },
+    {
+      maxRetries: 3,
+      onRetry: (error, attempt, delay) => {
+        logger.warn('Retrying batch create media items', {
+          count: items.length,
+          attempt,
+          delay,
+          error: error.message,
+        });
+
+        // Update operation status if tracking
+        if (operationId) {
+          operationStatusManager.retryOperation(
+            operationId,
+            `Batch create media items failed: ${error.message}`,
+            attempt,
+            3
+          );
+        }
+      },
+    }
+  );
+
+  const result: CreateMediaItemResponse = await response.json();
+
+  // Map results back to items
+  return result.newMediaItemResults.map((mediaItemResult, index) => {
+    const fileName = items[index].fileName;
+
+    if (mediaItemResult.mediaItem) {
+      logger.debug('Media item created successfully', {
+        fileName,
+        mediaItemId: mediaItemResult.mediaItem.id,
+      });
+
+      return {
+        success: true,
+        mediaItemId: mediaItemResult.mediaItem.id,
+        fileName,
+      };
+    } else {
+      const errorMsg =
+        mediaItemResult.status.message || 'Unknown error creating media item';
+
+      logger.warn('Media item creation failed in batch', {
+        fileName,
+        statusCode: mediaItemResult.status.code,
+        statusMessage: errorMsg,
+      });
+
+      return {
+        success: false,
+        fileName,
+        error: errorMsg,
+      };
+    }
+  });
+}
+
+/**
  * Batch upload multiple files to Google Photos
+ * Uploads are done sequentially to respect backoff, but createMediaItem calls are batched (5 items per batch)
  */
 export async function batchUploadFiles(
   accessToken: string,
@@ -233,10 +329,14 @@ export async function batchUploadFiles(
     OperationType.LONG_WRITE,
     'Uploading files to Google Photos',
     async operationId => {
-      logger.info('Starting batch upload to Photos (sequential with backoff)', {
-        fileCount: files.length,
-      });
+      logger.info(
+        'Starting batch upload to Photos (sequential with batched creation)',
+        {
+          fileCount: files.length,
+        }
+      );
 
+      const BATCH_SIZE = 5;
       let completedCount = 0;
       const results: Array<{
         driveFileId: string;
@@ -245,17 +345,100 @@ export async function batchUploadFiles(
         error?: string;
       }> = [];
 
+      // Accumulate uploads that need createMediaItem calls
+      let pendingBatch: Array<{
+        driveFileId: string;
+        uploadToken: string;
+        fileName: string;
+      }> = [];
+
+      // Helper function to create media items for accumulated batch
+      const processBatch = async () => {
+        if (pendingBatch.length === 0) return;
+
+        logger.debug('Processing batch of uploads', {
+          count: pendingBatch.length,
+        });
+
+        try {
+          const createResults = await batchCreateMediaItems(
+            accessToken,
+            pendingBatch.map(item => ({
+              uploadToken: item.uploadToken,
+              fileName: item.fileName,
+            })),
+            operationId
+          );
+
+          // Map results back to files
+          createResults.forEach((result, index) => {
+            const batchItem = pendingBatch[index];
+
+            completedCount++;
+            operationStatusManager.updateProgress(
+              operationId,
+              completedCount,
+              files.length
+            );
+
+            if (result.success) {
+              onProgress?.(batchItem.driveFileId, 'success');
+              results.push({
+                driveFileId: batchItem.driveFileId,
+                photosMediaItemId: result.mediaItemId,
+                success: true,
+              });
+            } else {
+              onProgress?.(batchItem.driveFileId, 'error', result.error);
+              results.push({
+                driveFileId: batchItem.driveFileId,
+                success: false,
+                error: result.error,
+              });
+            }
+          });
+        } catch (error) {
+          // If batch creation fails completely, mark all items in batch as failed
+          const errorMsg =
+            error instanceof Error ? error.message : 'Unknown error';
+          logger.error('Batch create media items failed', error, {
+            batchSize: pendingBatch.length,
+          });
+
+          pendingBatch.forEach(batchItem => {
+            completedCount++;
+            operationStatusManager.updateProgress(
+              operationId,
+              completedCount,
+              files.length
+            );
+
+            onProgress?.(batchItem.driveFileId, 'error', errorMsg);
+            results.push({
+              driveFileId: batchItem.driveFileId,
+              success: false,
+              error: errorMsg,
+            });
+          });
+        }
+
+        // Clear the batch
+        pendingBatch = [];
+      };
+
       // Process files sequentially so that any retry/backoff for one file
       // pauses progress for the rest of the batch (no wasted requests).
       for (const file of files) {
         // If another item triggered a backoff for this user, wait here.
         if (userEmail) await backoffController.waitWhilePaused(userEmail);
+
         try {
           onProgress?.(file.driveFileId, 'uploading');
 
-          const mediaItemId = await retryWithBackoff(
+          // Upload bytes to get upload token
+          const uploadToken = await retryWithBackoff(
             async () =>
-              uploadFileToPhotos(
+              uploadBytes(
                 accessToken,
                 file.buffer,
                 file.fileName,
@@ -296,20 +479,17 @@ export async function batchUploadFiles(
             }
           );
 
-          completedCount++;
-          operationStatusManager.updateProgress(
-            operationId,
-            completedCount,
-            files.length
-          );
-
-          onProgress?.(file.driveFileId, 'success');
-
-          results.push({
+          // Add to pending batch
+          pendingBatch.push({
             driveFileId: file.driveFileId,
-            photosMediaItemId: mediaItemId,
-            success: true,
+            uploadToken,
+            fileName: file.fileName,
           });
+
+          // Process batch if it reaches the batch size
+          if (pendingBatch.length >= BATCH_SIZE) {
+            await processBatch();
+          }
         } catch (error) {
           const errorMsg =
             error instanceof Error ? error.message : 'Unknown error';
@@ -334,6 +514,9 @@ export async function batchUploadFiles(
           });
         }
       }
+
+      // Process any remaining items in the batch
+      await processBatch();
 
       const successCount = results.filter(r => r.success).length;
       logger.info('Batch upload completed', {

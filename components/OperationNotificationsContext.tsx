@@ -52,7 +52,6 @@ export function OperationNotificationsProvider({
         }
         return [...prev, operation];
       });
-      setIsOpen(true);
     });
 
     eventSource.addEventListener('operation:updated', event => {
