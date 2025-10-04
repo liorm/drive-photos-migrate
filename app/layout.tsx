@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import Sidebar from '@/components/Sidebar';
 import Providers from '@/components/Providers';
+import { OperationNotifications } from '@/components/ui/OperationNotifications';
 
 export const metadata: Metadata = {
   title: 'Google Drive to Photos Uploader',
@@ -25,6 +26,7 @@ export default function RootLayout({
               </div>
             </main>
           </div>
+          <OperationNotifications />
         </Providers>
       </body>
     </html>

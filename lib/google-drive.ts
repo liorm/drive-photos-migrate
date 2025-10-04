@@ -7,6 +7,8 @@ import {
 } from '@/types/google-drive';
 import { createLogger } from '@/lib/logger';
 import { ExtendedError } from '@/lib/errors';
+import { retryWithBackoff } from '@/lib/retry';
+import operationStatusManager from '@/lib/operation-status';
 
 const logger = createLogger('google-drive');
 
@@ -25,98 +27,157 @@ function getDriveClient(accessToken: string) {
  * @param accessToken - User's OAuth access token
  * @param folderId - Optional folder ID to list contents (defaults to root)
  * @param pageToken - Optional pagination token
+ * @param operationId - Optional operation ID for status tracking
  * @returns List of files and folders with pagination info
  */
 export async function listDriveFiles(
   accessToken: string,
   folderId: string = 'root',
-  pageToken?: string
+  pageToken?: string,
+  operationId?: string
 ): Promise<DriveListResponse> {
   logger.debug('Listing Drive files', { folderId, hasPageToken: !!pageToken });
 
-  try {
-    const drive = getDriveClient(accessToken);
+  return retryWithBackoff(
+    async () => {
+      try {
+        const drive = getDriveClient(accessToken);
 
-    // Build query to list files in specified folder
-    // Filter for supported media types OR folders
-    const mimeTypeQuery = SUPPORTED_MIME_TYPES.map(
-      type => `mimeType='${type}'`
-    ).join(' or ');
+        // Build query to list files in specified folder
+        // Filter for supported media types OR folders
+        const mimeTypeQuery = SUPPORTED_MIME_TYPES.map(
+          type => `mimeType='${type}'`
+        ).join(' or ');
 
-    const query = `'${folderId}' in parents and trashed=false and (${mimeTypeQuery} or mimeType='application/vnd.google-apps.folder')`;
+        const query = `'${folderId}' in parents and trashed=false and (${mimeTypeQuery} or mimeType='application/vnd.google-apps.folder')`;
 
-    const response = await drive.files.list({
-      q: query,
-      pageSize: 100,
-      pageToken,
-      fields:
-        'nextPageToken, incompleteSearch, files(id, name, mimeType, size, thumbnailLink, webContentLink, iconLink, createdTime, modifiedTime, parents)',
-      orderBy: 'folder,name',
-    });
+        const response = await drive.files.list({
+          q: query,
+          pageSize: 100,
+          pageToken,
+          fields:
+            'nextPageToken, incompleteSearch, files(id, name, mimeType, size, thumbnailLink, webContentLink, iconLink, createdTime, modifiedTime, parents)',
+          orderBy: 'folder,name',
+        });
 
-    const fileCount = response.data.files?.length || 0;
-    logger.debug('Drive files listed successfully', {
-      folderId,
-      fileCount,
-      hasMore: !!response.data.nextPageToken,
-    });
+        const fileCount = response.data.files?.length || 0;
+        logger.debug('Drive files listed successfully', {
+          folderId,
+          fileCount,
+          hasMore: !!response.data.nextPageToken,
+        });
 
-    return {
-      files: (response.data.files || []) as (DriveFile | DriveFolder)[],
-      nextPageToken: response.data.nextPageToken || undefined,
-      incompleteSearch: response.data.incompleteSearch || false,
-    };
-  } catch (error) {
-    throw new ExtendedError({
-      message: 'Failed to list Drive files',
-      cause: error,
-      details: { folderId, hasPageToken: !!pageToken },
-    });
-  }
+        return {
+          files: (response.data.files || []) as (DriveFile | DriveFolder)[],
+          nextPageToken: response.data.nextPageToken || undefined,
+          incompleteSearch: response.data.incompleteSearch || false,
+        };
+      } catch (error) {
+        throw new ExtendedError({
+          message: 'Failed to list Drive files',
+          cause: error,
+          details: { folderId, hasPageToken: !!pageToken },
+        });
+      }
+    },
+    {
+      maxRetries: 3,
+      onRetry: (error, attempt, delay) => {
+        logger.warn('Retrying list Drive files', {
+          folderId,
+          attempt,
+          delay,
+          error: error.message,
+        });
+
+        // Update operation status if tracking
+        if (operationId) {
+          operationStatusManager.retryOperation(
+            operationId,
+            `List files failed: ${error.message}`,
+            attempt,
+            3
+          );
+        }
+      },
+    }
+  );
 }
 
 /**
  * Get file metadata by ID
  * @param accessToken - User's OAuth access token
  * @param fileId - File ID to retrieve
+ * @param operationId - Optional operation ID for status tracking
  * @returns File metadata
  */
-export async function getDriveFile(accessToken: string, fileId: string) {
+export async function getDriveFile(
+  accessToken: string,
+  fileId: string,
+  operationId?: string
+) {
   logger.debug('Getting Drive file metadata', { fileId });
 
-  try {
-    const drive = getDriveClient(accessToken);
+  return retryWithBackoff(
+    async () => {
+      try {
+        const drive = getDriveClient(accessToken);
 
-    const response = await drive.files.get({
-      fileId,
-      fields:
-        'id, name, mimeType, size, thumbnailLink, webContentLink, iconLink, createdTime, modifiedTime, parents',
-    });
+        const response = await drive.files.get({
+          fileId,
+          fields:
+            'id, name, mimeType, size, thumbnailLink, webContentLink, iconLink, createdTime, modifiedTime, parents',
+        });
 
-    logger.debug('Drive file metadata retrieved', {
-      fileId,
-      name: response.data.name,
-    });
+        logger.debug('Drive file metadata retrieved', {
+          fileId,
+          name: response.data.name,
+        });
 
-    return response.data;
-  } catch (error) {
-    throw new ExtendedError({
-      message: 'Failed to get Drive file metadata',
-      cause: error,
-      details: { fileId },
-    });
-  }
+        return response.data;
+      } catch (error) {
+        throw new ExtendedError({
+          message: 'Failed to get Drive file metadata',
+          cause: error,
+          details: { fileId },
+        });
+      }
+    },
+    {
+      maxRetries: 3,
+      onRetry: (error, attempt, delay) => {
+        logger.warn('Retrying get Drive file', {
+          fileId,
+          attempt,
+          delay,
+          error: error.message,
+        });
+
+        // Update operation status if tracking
+        if (operationId) {
+          operationStatusManager.retryOperation(
+            operationId,
+            `Get file failed: ${error.message}`,
+            attempt,
+            3
+          );
+        }
+      },
+    }
+  );
 }
 
 /**
  * Fetch ALL files and folders from a Google Drive folder (across all pages)
  * @param accessToken - User's OAuth access token
  * @param folderId - Folder ID to list contents (defaults to root)
+ * @param operationId - Optional operation ID for status tracking
  * @returns All files and folders (not paginated)
  */
 export async function listAllDriveFiles(
   accessToken: string,
-  folderId: string = 'root'
+  folderId: string = 'root',
+  operationId?: string
 ): Promise<{ files: DriveFile[]; folders: DriveFolder[] }> {
   logger.info('Starting to fetch all Drive files', { folderId });
   const startTime = Date.now();
@@ -129,7 +190,12 @@ export async function listAllDriveFiles(
   try {
     do {
       pageCount++;
-      const response = await listDriveFiles(accessToken, folderId, pageToken);
+      const response = await listDriveFiles(
+        accessToken,
+        folderId,
+        pageToken,
+        operationId
+      );
 
       // Separate files and folders
       response.files.forEach(item => {
@@ -141,6 +207,15 @@ export async function listAllDriveFiles(
       });
 
       pageToken = response.nextPageToken;
+
+      // Update operation progress if tracking
+      if (operationId) {
+        operationStatusManager.updateProgress(
+          operationId,
+          pageCount,
+          pageCount + (pageToken ? 1 : 0) // Estimate total pages
+        );
+      }
 
       // Log progress after each page
       logger.info('Fetched Drive files page', {
@@ -181,9 +256,14 @@ export async function listAllDriveFiles(
  * Get folder path (breadcrumbs) from root to current folder
  * @param accessToken - User's OAuth access token
  * @param folderId - Current folder ID
+ * @param operationId - Optional operation ID for status tracking
  * @returns Array of folder metadata from root to current
  */
-export async function getFolderPath(accessToken: string, folderId: string) {
+export async function getFolderPath(
+  accessToken: string,
+  folderId: string,
+  operationId?: string
+) {
   if (folderId === 'root') {
     return [{ id: 'root', name: 'My Drive' }];
   }
@@ -198,10 +278,34 @@ export async function getFolderPath(accessToken: string, folderId: string) {
 
     // Traverse up the folder hierarchy
     while (currentId !== 'root') {
-      const response = await drive.files.get({
-        fileId: currentId,
-        fields: 'id, name, parents',
-      });
+      const response = await retryWithBackoff(
+        async () =>
+          drive.files.get({
+            fileId: currentId,
+            fields: 'id, name, parents',
+          }),
+        {
+          maxRetries: 3,
+          onRetry: (error, attempt, delay) => {
+            logger.warn('Retrying get folder path', {
+              currentId,
+              attempt,
+              delay,
+              error: error.message,
+            });
+
+            // Update operation status if tracking
+            if (operationId) {
+              operationStatusManager.retryOperation(
+                operationId,
+                `Get folder path failed: ${error.message}`,
+                attempt,
+                3
+              );
+            }
+          },
+        }
+      );
 
       const file = response.data;
       path.unshift({ id: file.id!, name: file.name! });

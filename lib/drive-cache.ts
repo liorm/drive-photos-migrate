@@ -2,6 +2,7 @@ import { getDb } from './db';
 import { CachedPageResponse } from '@/types/drive-cache';
 import { listAllDriveFiles } from './google-drive';
 import { createLogger } from '@/lib/logger';
+import { trackOperation, OperationType } from '@/lib/operation-status';
 
 const logger = createLogger('drive-cache');
 
@@ -87,48 +88,59 @@ export async function syncFolderToCache(
   folderId: string,
   accessToken: string
 ): Promise<void> {
-  logger.info('Starting folder sync to cache', { userEmail, folderId });
-  const startTime = Date.now();
+  return trackOperation(
+    OperationType.LONG_READ,
+    'Syncing folder from Drive',
+    async operationId => {
+      logger.info('Starting folder sync to cache', { userEmail, folderId });
+      const startTime = Date.now();
 
-  // Fetch ALL files from Drive API (this logs progress internally)
-  const { files: allFiles, folders: allFolders } = await listAllDriveFiles(
-    accessToken,
-    folderId
+      // Fetch ALL files from Drive API (this logs progress internally)
+      const { files: allFiles, folders: allFolders } = await listAllDriveFiles(
+        accessToken,
+        folderId,
+        operationId
+      );
+
+      logger.info('Drive files fetched, writing to cache', {
+        userEmail,
+        folderId,
+        fileCount: allFiles.length,
+        folderCount: allFolders.length,
+      });
+
+      const db = await getDb();
+
+      // Initialize user cache if it doesn't exist
+      if (!db.data.users[userEmail]) {
+        logger.debug('Initializing cache for new user', { userEmail });
+        db.data.users[userEmail] = { folders: {} };
+      }
+
+      // Store in cache
+      db.data.users[userEmail].folders[folderId] = {
+        files: allFiles,
+        folders: allFolders,
+        lastSynced: new Date().toISOString(),
+        totalCount: allFiles.length + allFolders.length,
+      };
+
+      // Persist to disk
+      await db.write();
+
+      const duration = Date.now() - startTime;
+      logger.info('Folder sync completed successfully', {
+        userEmail,
+        folderId,
+        totalItems: allFiles.length + allFolders.length,
+        durationMs: duration,
+      });
+    },
+    {
+      description: `Syncing folder ${folderId}`,
+      metadata: { userEmail, folderId },
+    }
   );
-
-  logger.info('Drive files fetched, writing to cache', {
-    userEmail,
-    folderId,
-    fileCount: allFiles.length,
-    folderCount: allFolders.length,
-  });
-
-  const db = await getDb();
-
-  // Initialize user cache if it doesn't exist
-  if (!db.data.users[userEmail]) {
-    logger.debug('Initializing cache for new user', { userEmail });
-    db.data.users[userEmail] = { folders: {} };
-  }
-
-  // Store in cache
-  db.data.users[userEmail].folders[folderId] = {
-    files: allFiles,
-    folders: allFolders,
-    lastSynced: new Date().toISOString(),
-    totalCount: allFiles.length + allFolders.length,
-  };
-
-  // Persist to disk
-  await db.write();
-
-  const duration = Date.now() - startTime;
-  logger.info('Folder sync completed successfully', {
-    userEmail,
-    folderId,
-    totalItems: allFiles.length + allFolders.length,
-    durationMs: duration,
-  });
 }
 
 /**

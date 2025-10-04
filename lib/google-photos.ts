@@ -4,6 +4,11 @@ import {
 } from '@/types/google-photos';
 import { createLogger } from '@/lib/logger';
 import { ExtendedError } from '@/lib/errors';
+import { fetchWithRetry } from '@/lib/retry';
+import operationStatusManager, {
+  trackOperation,
+  OperationType,
+} from '@/lib/operation-status';
 
 const logger = createLogger('google-photos');
 
@@ -19,7 +24,8 @@ export async function uploadFileToPhotos(
   accessToken: string,
   fileBuffer: Buffer,
   fileName: string,
-  mimeType: string
+  mimeType: string,
+  operationId?: string
 ): Promise<string> {
   logger.info('Starting file upload to Photos', { fileName, mimeType });
 
@@ -28,11 +34,17 @@ export async function uploadFileToPhotos(
     accessToken,
     fileBuffer,
     fileName,
-    mimeType
+    mimeType,
+    operationId
   );
 
   // Step 2: Create media item from upload token
-  const mediaItemId = await createMediaItem(accessToken, uploadToken, fileName);
+  const mediaItemId = await createMediaItem(
+    accessToken,
+    uploadToken,
+    fileName,
+    operationId
+  );
 
   logger.info('File uploaded successfully to Photos', {
     fileName,
@@ -49,42 +61,48 @@ async function uploadBytes(
   accessToken: string,
   fileBuffer: Buffer,
   fileName: string,
-  _mimeType: string
+  _mimeType: string,
+  operationId?: string
 ): Promise<string> {
   logger.debug('Uploading bytes to Photos API', {
     fileName,
     size: fileBuffer.length,
   });
 
-  const response = await fetch(`${PHOTOS_API_BASE}/uploads`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/octet-stream',
-      'X-Goog-Upload-File-Name': fileName,
-      'X-Goog-Upload-Protocol': 'raw',
-    },
-    body: fileBuffer as unknown as BodyInit,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    let errorData;
-    try {
-      errorData = JSON.parse(errorText);
-    } catch {
-      errorData = { message: errorText };
-    }
-    throw new ExtendedError({
-      message: 'Failed to upload bytes to Photos API',
-      details: {
-        fileName,
-        statusCode: response.status,
-        statusText: response.statusText,
-        errorDetails: errorData,
+  const response = await fetchWithRetry(
+    `${PHOTOS_API_BASE}/uploads`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/octet-stream',
+        'X-Goog-Upload-File-Name': fileName,
+        'X-Goog-Upload-Protocol': 'raw',
       },
-    });
-  }
+      body: fileBuffer as unknown as BodyInit,
+    },
+    {
+      maxRetries: 3,
+      onRetry: (error, attempt, delay) => {
+        logger.warn('Retrying upload bytes', {
+          fileName,
+          attempt,
+          delay,
+          error: error.message,
+        });
+
+        // Update operation status if tracking
+        if (operationId) {
+          operationStatusManager.retryOperation(
+            operationId,
+            `Upload failed: ${error.message}`,
+            attempt,
+            3
+          );
+        }
+      },
+    }
+  );
 
   const uploadToken = await response.text();
 
@@ -102,7 +120,8 @@ async function uploadBytes(
 async function createMediaItem(
   accessToken: string,
   uploadToken: string,
-  fileName: string
+  fileName: string,
+  operationId?: string
 ): Promise<string> {
   logger.debug('Creating media item from upload token', { fileName });
 
@@ -117,33 +136,38 @@ async function createMediaItem(
     ],
   };
 
-  const response = await fetch(`${PHOTOS_API_BASE}/mediaItems:batchCreate`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    let errorData;
-    try {
-      errorData = JSON.parse(errorText);
-    } catch {
-      errorData = { message: errorText };
-    }
-    throw new ExtendedError({
-      message: 'Failed to create media item',
-      details: {
-        fileName,
-        statusCode: response.status,
-        statusText: response.statusText,
-        errorDetails: errorData,
+  const response = await fetchWithRetry(
+    `${PHOTOS_API_BASE}/mediaItems:batchCreate`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
       },
-    });
-  }
+      body: JSON.stringify(requestBody),
+    },
+    {
+      maxRetries: 3,
+      onRetry: (error, attempt, delay) => {
+        logger.warn('Retrying create media item', {
+          fileName,
+          attempt,
+          delay,
+          error: error.message,
+        });
+
+        // Update operation status if tracking
+        if (operationId) {
+          operationStatusManager.retryOperation(
+            operationId,
+            `Create media item failed: ${error.message}`,
+            attempt,
+            3
+          );
+        }
+      },
+    }
+  );
 
   const result: CreateMediaItemResponse = await response.json();
 
@@ -194,66 +218,96 @@ export async function batchUploadFiles(
     error?: string;
   }>
 > {
-  logger.info('Starting batch upload to Photos', { fileCount: files.length });
+  return trackOperation(
+    OperationType.LONG_WRITE,
+    'Uploading files to Google Photos',
+    async operationId => {
+      logger.info('Starting batch upload to Photos', {
+        fileCount: files.length,
+      });
 
-  const results = await Promise.allSettled(
-    files.map(async file => {
-      try {
-        onProgress?.(file.driveFileId, 'uploading');
+      let completedCount = 0;
 
-        const mediaItemId = await uploadFileToPhotos(
-          accessToken,
-          file.buffer,
-          file.fileName,
-          file.mimeType
-        );
+      const results = await Promise.allSettled(
+        files.map(async file => {
+          try {
+            onProgress?.(file.driveFileId, 'uploading');
 
-        onProgress?.(file.driveFileId, 'success');
+            const mediaItemId = await uploadFileToPhotos(
+              accessToken,
+              file.buffer,
+              file.fileName,
+              file.mimeType,
+              operationId
+            );
 
-        return {
-          driveFileId: file.driveFileId,
-          photosMediaItemId: mediaItemId,
-          success: true,
-        };
-      } catch (error) {
-        const errorMsg =
-          error instanceof Error ? error.message : 'Unknown error';
-        logger.error('Batch upload file failed', error, {
-          driveFileId: file.driveFileId,
-          fileName: file.fileName,
-        });
+            completedCount++;
+            operationStatusManager.updateProgress(
+              operationId,
+              completedCount,
+              files.length
+            );
 
-        onProgress?.(file.driveFileId, 'error', errorMsg);
+            onProgress?.(file.driveFileId, 'success');
 
-        return {
-          driveFileId: file.driveFileId,
-          success: false,
-          error: errorMsg,
-        };
-      }
-    })
-  );
+            return {
+              driveFileId: file.driveFileId,
+              photosMediaItemId: mediaItemId,
+              success: true,
+            };
+          } catch (error) {
+            const errorMsg =
+              error instanceof Error ? error.message : 'Unknown error';
+            logger.error('Batch upload file failed', error, {
+              driveFileId: file.driveFileId,
+              fileName: file.fileName,
+            });
 
-  const finalResults = results.map(result => {
-    if (result.status === 'fulfilled') {
-      return result.value;
-    } else {
-      return {
-        driveFileId: 'unknown',
-        success: false,
-        error: result.reason?.message || 'Unknown error',
-      };
+            completedCount++;
+            operationStatusManager.updateProgress(
+              operationId,
+              completedCount,
+              files.length
+            );
+
+            onProgress?.(file.driveFileId, 'error', errorMsg);
+
+            return {
+              driveFileId: file.driveFileId,
+              success: false,
+              error: errorMsg,
+            };
+          }
+        })
+      );
+
+      const finalResults = results.map(result => {
+        if (result.status === 'fulfilled') {
+          return result.value;
+        } else {
+          return {
+            driveFileId: 'unknown',
+            success: false,
+            error: result.reason?.message || 'Unknown error',
+          };
+        }
+      });
+
+      const successCount = finalResults.filter(r => r.success).length;
+      logger.info('Batch upload completed', {
+        totalFiles: files.length,
+        successCount,
+        failureCount: files.length - successCount,
+      });
+
+      return finalResults;
+    },
+    {
+      description: `Uploading ${files.length} files`,
+      total: files.length,
+      metadata: { fileCount: files.length },
     }
-  });
-
-  const successCount = finalResults.filter(r => r.success).length;
-  logger.info('Batch upload completed', {
-    totalFiles: files.length,
-    successCount,
-    failureCount: files.length - successCount,
-  });
-
-  return finalResults;
+  );
 }
 
 /**
@@ -261,37 +315,40 @@ export async function batchUploadFiles(
  */
 export async function downloadDriveFile(
   accessToken: string,
-  fileId: string
+  fileId: string,
+  operationId?: string
 ): Promise<Buffer> {
   logger.debug('Downloading file from Drive', { fileId });
 
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
+    },
+    {
+      maxRetries: 3,
+      onRetry: (error, attempt, delay) => {
+        logger.warn('Retrying download Drive file', {
+          fileId,
+          attempt,
+          delay,
+          error: error.message,
+        });
+
+        // Update operation status if tracking
+        if (operationId) {
+          operationStatusManager.retryOperation(
+            operationId,
+            `Download failed: ${error.message}`,
+            attempt,
+            3
+          );
+        }
+      },
     }
   );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    let errorData;
-    try {
-      errorData = JSON.parse(errorText);
-    } catch {
-      errorData = { message: errorText };
-    }
-    throw new ExtendedError({
-      message: 'Failed to download Drive file',
-      details: {
-        fileId,
-        statusCode: response.status,
-        statusText: response.statusText,
-        errorDetails: errorData,
-      },
-    });
-  }
 
   const arrayBuffer = await response.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
