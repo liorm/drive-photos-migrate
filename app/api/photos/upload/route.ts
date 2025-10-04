@@ -81,6 +81,7 @@ export async function POST(request: NextRequest) {
       fileName: string;
       mimeType: string;
       driveFileId: string;
+      fileSizeBytes: number;
     }> = [];
 
     for (const fileId of fileIds) {
@@ -118,6 +119,7 @@ export async function POST(request: NextRequest) {
           fileName: fileMetadata.name,
           mimeType: fileMetadata.mimeType,
           driveFileId: fileId,
+          fileSizeBytes: fileMetadata.size ? parseInt(fileMetadata.size) : 0,
         });
 
         logger.debug('File downloaded successfully', {
@@ -163,16 +165,18 @@ export async function POST(request: NextRequest) {
     if (successfulUploads.length > 0) {
       await recordUploads(
         userEmail,
-        successfulUploads.map(r => ({
-          driveFileId: r.driveFileId,
-          photosMediaItemId: r.photosMediaItemId!,
-          fileName:
-            filesToUpload.find(f => f.driveFileId === r.driveFileId)
-              ?.fileName || 'unknown',
-          mimeType:
-            filesToUpload.find(f => f.driveFileId === r.driveFileId)
-              ?.mimeType || 'unknown',
-        }))
+        successfulUploads.map(r => {
+          const originalFile = filesToUpload.find(
+            f => f.driveFileId === r.driveFileId
+          );
+          return {
+            driveFileId: r.driveFileId,
+            photosMediaItemId: r.photosMediaItemId!,
+            fileName: originalFile?.fileName || 'unknown',
+            mimeType: originalFile?.mimeType || 'unknown',
+            fileSizeBytes: originalFile?.fileSizeBytes || 0,
+          };
+        })
       );
 
       logger.info('Uploads recorded successfully', {

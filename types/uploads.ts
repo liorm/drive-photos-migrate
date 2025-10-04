@@ -10,6 +10,7 @@ export interface UploadRecord {
   uploadedAt: string;
   fileName: string;
   mimeType: string;
+  fileSizeBytes: number;
 }
 
 /**

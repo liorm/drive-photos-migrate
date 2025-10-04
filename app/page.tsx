@@ -1,11 +1,13 @@
 import { auth } from '@/auth';
 import Link from 'next/link';
+import DashboardStats from '@/components/dashboard-stats';
+import { redirect } from 'next/navigation';
 
 export default async function Home() {
   const session = await auth();
 
   if (!session?.user) {
-    return null; // Middleware will redirect to sign-in
+    redirect('/auth/signin');
   }
 
   return (
@@ -21,70 +23,7 @@ export default async function Home() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-6 md:grid-cols-3">
-        <div className="rounded-lg bg-white p-6 shadow-md transition-shadow hover:shadow-lg">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-500">Total Files</h3>
-            <svg
-              className="h-8 w-8 text-blue-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-              />
-            </svg>
-          </div>
-          <p className="text-3xl font-bold text-gray-900">0</p>
-          <p className="mt-1 text-xs text-gray-500">Ready to upload</p>
-        </div>
-
-        <div className="rounded-lg bg-white p-6 shadow-md transition-shadow hover:shadow-lg">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-500">Uploaded</h3>
-            <svg
-              className="h-8 w-8 text-green-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-          </div>
-          <p className="text-3xl font-bold text-gray-900">0</p>
-          <p className="mt-1 text-xs text-gray-500">Successfully synced</p>
-        </div>
-
-        <div className="rounded-lg bg-white p-6 shadow-md transition-shadow hover:shadow-lg">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-500">Storage Used</h3>
-            <svg
-              className="h-8 w-8 text-purple-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
-              />
-            </svg>
-          </div>
-          <p className="text-3xl font-bold text-gray-900">0 MB</p>
-          <p className="mt-1 text-xs text-gray-500">Transferred</p>
-        </div>
-      </div>
+      <DashboardStats />
 
       {/* Quick Actions */}
       <div className="rounded-lg bg-white p-6 shadow-md">

@@ -143,13 +143,15 @@ export async function recordUpload(
   driveFileId: string,
   photosMediaItemId: string,
   fileName: string,
-  mimeType: string
+  mimeType: string,
+  fileSizeBytes: number
 ): Promise<void> {
   logger.info('Recording upload', {
     userEmail,
     driveFileId,
     photosMediaItemId,
     fileName,
+    fileSizeBytes,
   });
 
   const db = await getUploadsDb();
@@ -166,6 +168,7 @@ export async function recordUpload(
     uploadedAt: new Date().toISOString(),
     fileName,
     mimeType,
+    fileSizeBytes,
   };
 
   // Persist to disk
@@ -188,6 +191,7 @@ export async function recordUploads(
     photosMediaItemId: string;
     fileName: string;
     mimeType: string;
+    fileSizeBytes: number;
   }>
 ): Promise<void> {
   logger.info('Recording batch uploads', {
@@ -212,6 +216,7 @@ export async function recordUploads(
       uploadedAt,
       fileName: upload.fileName,
       mimeType: upload.mimeType,
+      fileSizeBytes: upload.fileSizeBytes,
     };
   }
 
@@ -248,6 +253,25 @@ export async function deleteUploadRecord(
       driveFileId,
     });
   }
+}
+
+/**
+ * Get all upload records for a user
+ * @returns An array of upload records
+ */
+export async function getUploadedRecords(
+  userEmail: string
+): Promise<UploadRecord[]> {
+  const db = await getUploadsDb();
+  const userRecords = db.data.users[userEmail] || {};
+  const records = Object.values(userRecords);
+
+  logger.debug('Retrieved all upload records for user', {
+    userEmail,
+    count: records.length,
+  });
+
+  return records;
 }
 
 /**

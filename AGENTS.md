@@ -10,11 +10,11 @@ The project is built with Next.js 15 (using the App Router and React 19), TypeSc
 
 The following scripts are available in `package.json`:
 
-*   **`pnpm dev`**: Runs the application in development mode.
-*   **`pnpm build`**: Builds the application for production.
-*   **`pnpm start`**: Starts the production server.
-*   **`pnpm lint`**: Lints the codebase using ESLint.
-*   **`pnpm format`**: Formats the code using Prettier.
+- **`pnpm dev`**: Runs the application in development mode.
+- **`pnpm build`**: Builds the application for production.
+- **`pnpm start`**: Starts the production server.
+- **`pnpm lint`**: Lints the codebase using ESLint.
+- **`pnpm format`**: Formats the code using Prettier.
 
 To run the project locally, you need to:
 
@@ -26,8 +26,8 @@ To run the project locally, you need to:
 
 ## Development Conventions
 
-*   **Authentication**: The project uses NextAuth.js v5 for authentication, with a Google provider configured for OAuth 2.0. It handles token refresh automatically.
-*   **Routing**: The application uses the Next.js App Router. Route protection is implemented using middleware.
-*   **Styling**: The project uses Tailwind CSS v4 for styling.
-*   **Linting and Formatting**: The project is set up with ESLint and Prettier to enforce a consistent coding style.
-*   **Type Safety**: The project is written in TypeScript and includes type definitions for Google Drive and NextAuth.js.
+- **Authentication**: The project uses NextAuth.js v5 for authentication, with a Google provider configured for OAuth 2.0. It handles token refresh automatically.
+- **Routing**: The application uses the Next.js App Router. Route protection is implemented using middleware.
+- **Styling**: The project uses Tailwind CSS v4 for styling.
+- **Linting and Formatting**: The project is set up with ESLint and Prettier to enforce a consistent coding style.
+- **Type Safety**: The project is written in TypeScript and includes type definitions for Google Drive and NextAuth.js.
