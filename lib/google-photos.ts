@@ -3,6 +3,7 @@ import {
   CreateMediaItemResponse,
 } from '@/types/google-photos';
 import { createLogger } from '@/lib/logger';
+import { ExtendedError } from '@/lib/errors';
 
 const logger = createLogger('google-photos');
 
@@ -22,34 +23,23 @@ export async function uploadFileToPhotos(
 ): Promise<string> {
   logger.info('Starting file upload to Photos', { fileName, mimeType });
 
-  try {
-    // Step 1: Upload bytes to get upload token
-    const uploadToken = await uploadBytes(
-      accessToken,
-      fileBuffer,
-      fileName,
-      mimeType
-    );
+  // Step 1: Upload bytes to get upload token
+  const uploadToken = await uploadBytes(
+    accessToken,
+    fileBuffer,
+    fileName,
+    mimeType
+  );
 
-    // Step 2: Create media item from upload token
-    const mediaItemId = await createMediaItem(
-      accessToken,
-      uploadToken,
-      fileName
-    );
+  // Step 2: Create media item from upload token
+  const mediaItemId = await createMediaItem(accessToken, uploadToken, fileName);
 
-    logger.info('File uploaded successfully to Photos', {
-      fileName,
-      mediaItemId,
-    });
+  logger.info('File uploaded successfully to Photos', {
+    fileName,
+    mediaItemId,
+  });
 
-    return mediaItemId;
-  } catch (error) {
-    logger.error('Error uploading file to Photos', error, { fileName });
-    throw new Error(
-      `Failed to upload ${fileName}: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
-  }
+  return mediaItemId;
 }
 
 /**
@@ -79,11 +69,21 @@ async function uploadBytes(
 
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error('Failed to upload bytes', new Error(errorText), {
-      fileName,
-      statusCode: response.status,
+    let errorData;
+    try {
+      errorData = JSON.parse(errorText);
+    } catch {
+      errorData = { message: errorText };
+    }
+    throw new ExtendedError({
+      message: 'Failed to upload bytes to Photos API',
+      details: {
+        fileName,
+        statusCode: response.status,
+        statusText: response.statusText,
+        errorDetails: errorData,
+      },
     });
-    throw new Error(`Upload failed: ${response.statusText} - ${errorText}`);
   }
 
   const uploadToken = await response.text();
@@ -128,13 +128,21 @@ async function createMediaItem(
 
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error('Failed to create media item', new Error(errorText), {
-      fileName,
-      statusCode: response.status,
+    let errorData;
+    try {
+      errorData = JSON.parse(errorText);
+    } catch {
+      errorData = { message: errorText };
+    }
+    throw new ExtendedError({
+      message: 'Failed to create media item',
+      details: {
+        fileName,
+        statusCode: response.status,
+        statusText: response.statusText,
+        errorDetails: errorData,
+      },
     });
-    throw new Error(
-      `Failed to create media item: ${response.statusText} - ${errorText}`
-    );
   }
 
   const result: CreateMediaItemResponse = await response.json();
@@ -144,11 +152,14 @@ async function createMediaItem(
   if (!mediaItemResult.mediaItem) {
     const errorMsg =
       mediaItemResult.status.message || 'Unknown error creating media item';
-    logger.error('Media item creation failed', new Error(errorMsg), {
-      fileName,
-      statusCode: mediaItemResult.status.code,
+    throw new ExtendedError({
+      message: 'Media item creation failed',
+      details: {
+        fileName,
+        statusCode: mediaItemResult.status.code,
+        statusMessage: errorMsg,
+      },
     });
-    throw new Error(errorMsg);
   }
 
   logger.debug('Media item created successfully', {
@@ -265,13 +276,21 @@ export async function downloadDriveFile(
 
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error('Failed to download Drive file', new Error(errorText), {
-      fileId,
-      statusCode: response.status,
+    let errorData;
+    try {
+      errorData = JSON.parse(errorText);
+    } catch {
+      errorData = { message: errorText };
+    }
+    throw new ExtendedError({
+      message: 'Failed to download Drive file',
+      details: {
+        fileId,
+        statusCode: response.status,
+        statusText: response.statusText,
+        errorDetails: errorData,
+      },
     });
-    throw new Error(
-      `Failed to download file: ${response.statusText} - ${errorText}`
-    );
   }
 
   const arrayBuffer = await response.arrayBuffer();

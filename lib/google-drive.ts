@@ -6,6 +6,7 @@ import {
   SUPPORTED_MIME_TYPES,
 } from '@/types/google-drive';
 import { createLogger } from '@/lib/logger';
+import { ExtendedError } from '@/lib/errors';
 
 const logger = createLogger('google-drive');
 
@@ -66,10 +67,11 @@ export async function listDriveFiles(
       incompleteSearch: response.data.incompleteSearch || false,
     };
   } catch (error) {
-    logger.error('Error listing Drive files', error, { folderId });
-    throw new Error(
-      `Failed to list Drive files: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
+    throw new ExtendedError({
+      message: 'Failed to list Drive files',
+      cause: error,
+      details: { folderId, hasPageToken: !!pageToken },
+    });
   }
 }
 
@@ -98,10 +100,11 @@ export async function getDriveFile(accessToken: string, fileId: string) {
 
     return response.data;
   } catch (error) {
-    logger.error('Error getting Drive file', error, { fileId });
-    throw new Error(
-      `Failed to get Drive file: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
+    throw new ExtendedError({
+      message: 'Failed to get Drive file metadata',
+      cause: error,
+      details: { fileId },
+    });
   }
 }
 
@@ -161,15 +164,16 @@ export async function listAllDriveFiles(
 
     return { files: allFiles, folders: allFolders };
   } catch (error) {
-    logger.error('Error listing all Drive files', error, {
-      folderId,
-      filesRetrievedSoFar: allFiles.length,
-      foldersRetrievedSoFar: allFolders.length,
-      pagesProcessed: pageCount,
+    throw new ExtendedError({
+      message: 'Failed to list all Drive files',
+      cause: error,
+      details: {
+        folderId,
+        filesRetrievedSoFar: allFiles.length,
+        foldersRetrievedSoFar: allFolders.length,
+        pagesProcessed: pageCount,
+      },
     });
-    throw new Error(
-      `Failed to list all Drive files: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
   }
 }
 
