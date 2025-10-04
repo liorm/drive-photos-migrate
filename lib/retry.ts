@@ -137,6 +137,14 @@ export async function retryWithBackoff<T>(
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
 
+      // If the operation was explicitly aborted, don't retry
+      if ((lastError as any).name === 'AbortError') {
+        logger.info('Operation aborted, not retrying', {
+          error: lastError.message,
+        });
+        throw lastError;
+      }
+
       // Check if we should retry this error
       if (!opts.shouldRetry(lastError)) {
         logger.debug('Error is not retryable, throwing immediately', {

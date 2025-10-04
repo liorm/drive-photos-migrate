@@ -28,7 +28,8 @@ export async function uploadFileToPhotos(
   fileBuffer: Buffer,
   fileName: string,
   mimeType: string,
-  operationId?: string
+  operationId?: string,
+  signal?: AbortSignal
 ): Promise<string> {
   logger.info('Starting file upload to Photos', { fileName, mimeType });
 
@@ -38,7 +39,8 @@ export async function uploadFileToPhotos(
     fileBuffer,
     fileName,
     mimeType,
-    operationId
+    operationId,
+    signal
   );
 
   // Step 2: Create media item from upload token
@@ -65,7 +67,8 @@ async function uploadBytes(
   fileBuffer: Buffer,
   fileName: string,
   _mimeType: string,
-  operationId?: string
+  operationId?: string,
+  signal?: AbortSignal
 ): Promise<string> {
   logger.debug('Uploading bytes to Photos API', {
     fileName,
@@ -83,6 +86,8 @@ async function uploadBytes(
         'X-Goog-Upload-Protocol': 'raw',
       },
       body: fileBuffer as unknown as BodyInit,
+      // forward abort signal if provided
+      signal,
     },
     {
       maxRetries: 3,
@@ -148,6 +153,7 @@ async function createMediaItem(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(requestBody),
+      // createMediaItem is fast, no signal forwarded here
     },
     {
       maxRetries: 3,
@@ -352,7 +358,8 @@ export async function batchUploadFiles(
 export async function downloadDriveFile(
   accessToken: string,
   fileId: string,
-  operationId?: string
+  operationId?: string,
+  signal?: AbortSignal
 ): Promise<Buffer> {
   logger.debug('Downloading file from Drive', { fileId });
 
@@ -363,6 +370,7 @@ export async function downloadDriveFile(
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
+        signal,
       },
       {
         maxRetries: 3,
@@ -456,6 +464,7 @@ export async function downloadDriveFile(
               headers: {
                 Authorization: `Bearer ${accessToken}`,
               },
+              signal,
             },
             {
               maxRetries: 2,

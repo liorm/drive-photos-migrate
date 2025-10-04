@@ -12,6 +12,9 @@ const logger = createLogger('queue-processor');
 // Track active processing per user to prevent concurrent processing
 const activeProcessing = new Set<string>();
 
+// Per-user AbortControllers for in-flight work so we can cancel downloads/uploads
+const activeControllers = new Map<string, AbortController>();
+
 // Track stop requests (set by API/UI) so processing can be stopped
 // gracefully between batches.
 const stopRequests = new Set<string>();
@@ -19,6 +22,19 @@ const stopRequests = new Set<string>();
 /** Request that processing for a user be stopped. */
 export function requestStopProcessing(userEmail: string): void {
   stopRequests.add(userEmail);
+
+  // If there's an in-flight controller for this user, abort to cancel downloads/uploads
+  const controller = activeControllers.get(userEmail);
+  if (controller) {
+    logger.info('Aborting in-flight work for user due to stop request', {
+      userEmail,
+    });
+    try {
+      controller.abort();
+    } catch (e) {
+      logger.warn('Error aborting controller', { userEmail, error: e });
+    }
+  }
 }
 
 /** Clear a previously requested stop for a user. */
@@ -116,6 +132,10 @@ export async function processQueue(
 
     let nextIndex = 0;
 
+    // Create an AbortController for this run so we can cancel in-flight fetches
+    const controller = new AbortController();
+    activeControllers.set(userEmail, controller);
+
     const workers: Promise<void>[] = [];
 
     for (let w = 0; w < concurrency; w++) {
@@ -186,7 +206,9 @@ export async function processQueue(
 
                 const buffer = await downloadDriveFile(
                   accessToken,
-                  item.driveFileId
+                  item.driveFileId,
+                  undefined,
+                  controller.signal
                 );
 
                 logger.debug('File downloaded successfully', {
@@ -208,7 +230,9 @@ export async function processQueue(
                   accessToken,
                   buffer,
                   item.fileName,
-                  item.mimeType
+                  item.mimeType,
+                  undefined,
+                  controller.signal
                 );
 
                 logger.info('File uploaded to Photos successfully', {
@@ -281,6 +305,27 @@ export async function processQueue(
 
             successCount++;
           } catch (error) {
+            // If the error was due to an abort, stop processing without
+            // marking the item as failed (so it remains pending).
+            const isAbort =
+              error &&
+              typeof error === 'object' &&
+              (error as any).name === 'AbortError';
+
+            if (isAbort) {
+              logger.info('Processing aborted during item download/upload', {
+                userEmail,
+                queueItemId: item.id,
+                driveFileId: item.driveFileId,
+                fileName: item.fileName,
+              });
+
+              // Ensure stop flag is set so main flow finalizes accordingly
+              stopRequestedDuringRun = true;
+
+              // Do not mark the item as failed; leave as pending for retry
+              break;
+            }
             const errorMessage =
               error instanceof Error ? error.message : String(error);
 
@@ -364,5 +409,15 @@ export async function processQueue(
   } finally {
     // Mark as not processing
     activeProcessing.delete(userEmail);
+    // Remove and abort any active controller for this user
+    const controller = activeControllers.get(userEmail);
+    if (controller) {
+      try {
+        controller.abort();
+      } catch (e) {
+        // ignore
+      }
+      activeControllers.delete(userEmail);
+    }
   }
 }

@@ -119,8 +119,8 @@ export function OperationNotifications() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-start p-4 sm:p-6 lg:pl-64">
-      <div className="flex w-full max-w-sm flex-col space-y-0">
+    <div className="pointer-events-none fixed inset-0 z-50 flex items-end justify-start p-4 sm:p-6 lg:pl-64">
+      <div className="pointer-events-auto flex w-full max-w-sm flex-col space-y-0">
         <div className="flex items-center justify-between rounded-none bg-slate-900/80 px-3 py-2 shadow-none backdrop-blur-sm backdrop-filter">
           <h3 className="text-sm font-semibold text-white">
             Ongoing Operations
