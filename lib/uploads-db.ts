@@ -256,6 +256,46 @@ export async function deleteUploadRecord(
 }
 
 /**
+ * Batch delete multiple upload records
+ */
+export async function deleteUploadRecords(
+  userEmail: string,
+  driveFileIds: string[]
+): Promise<void> {
+  logger.info('Deleting batch upload records', {
+    userEmail,
+    fileCount: driveFileIds.length,
+  });
+
+  const db = await getUploadsDb();
+
+  if (!db.data.users[userEmail]) {
+    logger.debug('No upload records for user, nothing to delete', {
+      userEmail,
+    });
+    return;
+  }
+
+  let deletedCount = 0;
+  for (const fileId of driveFileIds) {
+    if (db.data.users[userEmail][fileId]) {
+      delete db.data.users[userEmail][fileId];
+      deletedCount++;
+    }
+  }
+
+  if (deletedCount > 0) {
+    await db.write();
+    logger.info('Batch upload records deleted successfully', {
+      userEmail,
+      deletedCount,
+    });
+  } else {
+    logger.debug('No upload records found to delete', { userEmail });
+  }
+}
+
+/**
  * Get all upload records for a user
  * @returns An array of upload records
  */

@@ -35,7 +35,7 @@ class Logger {
   ): string {
     const timestamp = new Date().toISOString();
     const prefixStr = this.prefix ? `[${this.prefix}] ` : '';
-    const contextStr = context ? ` ${JSON.stringify(context)}` : '';
+    const contextStr = context ? `\n${JSON.stringify(context, null, 2)}` : '';
 
     // Color scheme based on log level
     let levelColor: string;
@@ -77,12 +77,62 @@ class Logger {
     console.warn(this.formatMessage('warn', message, context));
   }
 
+  private formatError(error: Error | unknown): string {
+    if (!(error instanceof Error)) {
+      return `\n${colors.red}Error details:${colors.reset}\n${JSON.stringify(error, null, 2)}`;
+    }
+
+    let output = `\n${colors.red}${error.name}: ${error.message}${colors.reset}`;
+
+    // Add stack trace (skip first line which is the error message)
+    if (error.stack) {
+      const stackLines = error.stack.split('\n').slice(1);
+      output += `\n${colors.gray}${stackLines.join('\n')}${colors.reset}`;
+    }
+
+    // Handle error cause chain
+    if ('cause' in error && error.cause) {
+      output += `\n\n${colors.yellow}Caused by:${colors.reset}`;
+      output += this.formatError(error.cause);
+    }
+
+    return output;
+  }
+
   error(message: string, error?: Error | unknown, context?: LogContext): void {
-    const errorContext =
-      error instanceof Error
-        ? { ...context, error: error.message, stack: error.stack }
-        : { ...context, error };
-    console.error(this.formatMessage('error', message, errorContext));
+    // Build the log message parts
+    const timestamp = new Date().toISOString();
+    const prefixStr = this.prefix ? `[${this.prefix}] ` : '';
+
+    // Header line
+    let output = `${colors.gray}[${timestamp}]${colors.reset} ${colors.red}[ERROR]${colors.reset} ${colors.magenta}${prefixStr}${colors.reset}${message}`;
+
+    // Merge context with ExtendedError details if present
+    let mergedContext = { ...context };
+    if (
+      error &&
+      typeof error === 'object' &&
+      'details' in error &&
+      typeof error.details === 'object' &&
+      error.details !== null
+    ) {
+      mergedContext = {
+        ...mergedContext,
+        ...(error.details as Record<string, unknown>),
+      };
+    }
+
+    // Add context if present
+    if (Object.keys(mergedContext).length > 0) {
+      output += `\n${colors.green}Context:${colors.reset}\n${JSON.stringify(mergedContext, null, 2)}`;
+    }
+
+    // Add error details if present
+    if (error) {
+      output += this.formatError(error);
+    }
+
+    console.error(output);
   }
 
   /**

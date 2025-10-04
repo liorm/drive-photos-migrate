@@ -326,6 +326,38 @@ async function getParentFolderIds(
 }
 
 /**
+ * Clear sync status cache for specific files
+ */
+export async function clearFileSyncStatusCache(
+  userEmail: string,
+  fileIds: string[]
+): Promise<void> {
+  logger.info('Clearing sync status cache for files', {
+    userEmail,
+    fileCount: fileIds.length,
+  });
+
+  const db = await getDb();
+
+  if (!db.data.users[userEmail]?.syncStatusCache?.files) {
+    logger.debug('No file sync status cache to clear', { userEmail });
+    return;
+  }
+
+  for (const fileId of fileIds) {
+    delete db.data.users[userEmail].syncStatusCache!.files[fileId];
+    logger.debug('Cleared file sync status cache', { userEmail, fileId });
+  }
+
+  await db.write();
+
+  logger.info('File sync status cache cleared', {
+    userEmail,
+    fileCount: fileIds.length,
+  });
+}
+
+/**
  * Clear ALL sync status cache for a user (for testing)
  */
 export async function clearAllSyncStatusCache(
