@@ -89,6 +89,7 @@ export async function processQueue(
 
     let successCount = 0;
     let failureCount = 0;
+    let stopRequestedDuringRun = false;
 
     // Process items with limited concurrency (workers). This allows up to
     // QUEUE_CONCURRENCY concurrent downloads/uploads while still honoring
@@ -120,6 +121,21 @@ export async function processQueue(
     for (let w = 0; w < concurrency; w++) {
       const worker = (async () => {
         while (true) {
+          // Respect a stop request between items
+          if (stopRequests.has(userEmail)) {
+            logger.info('Stop requested during processing, worker exiting', {
+              userEmail,
+              workerId: w,
+            });
+
+            // Record that a stop was requested so main flow can finalize accordingly
+            stopRequestedDuringRun = true;
+
+            // Clear the stop request so future processing calls aren't immediately skipped
+            stopRequests.delete(userEmail);
+
+            break;
+          }
           const index = nextIndex++;
           if (index >= pendingItems.length) break;
           const item = pendingItems[index];
@@ -134,6 +150,22 @@ export async function processQueue(
 
           // Wait if the user is paused due to a backoff triggered elsewhere
           await backoffController.waitWhilePaused(userEmail);
+
+          // Check stop request again after any pause
+          if (stopRequests.has(userEmail)) {
+            logger.info(
+              'Stop requested during processing (after pause), worker exiting',
+              {
+                userEmail,
+                workerId: w,
+                queueItemId: item.id,
+              }
+            );
+
+            stopRequestedDuringRun = true;
+            stopRequests.delete(userEmail);
+            break;
+          }
 
           try {
             await retryWithBackoff(
@@ -284,25 +316,48 @@ export async function processQueue(
 
     await Promise.all(workers);
 
-    // Update final operation progress
+    // Compute processed count
+    const processedCount = successCount + failureCount;
+
+    // Update final operation progress to actual processed items
     operationStatusManager.updateProgress(
       operationId,
-      pendingItems.length,
+      Math.min(processedCount, pendingItems.length),
       pendingItems.length
     );
 
-    // Complete the operation
-    operationStatusManager.completeOperation(operationId, {
-      successCount,
-      failureCount,
-    });
+    // If a stop was requested during the run, mark the operation as completed
+    // but include metadata to indicate it was stopped prematurely.
+    if (stopRequestedDuringRun) {
+      operationStatusManager.completeOperation(operationId, {
+        successCount,
+        failureCount,
+        stopped: true,
+        processedCount,
+      });
 
-    logger.info('Queue processing completed', {
-      userEmail,
-      totalItems: pendingItems.length,
-      successCount,
-      failureCount,
-    });
+      logger.info('Queue processing stopped by user', {
+        userEmail,
+        totalItems: pendingItems.length,
+        processedCount,
+        successCount,
+        failureCount,
+      });
+    } else {
+      // Complete the operation normally
+      operationStatusManager.completeOperation(operationId, {
+        successCount,
+        failureCount,
+        processedCount,
+      });
+
+      logger.info('Queue processing completed', {
+        userEmail,
+        totalItems: pendingItems.length,
+        successCount,
+        failureCount,
+      });
+    }
   } catch (error) {
     logger.error('Error processing queue', error, { userEmail });
     throw error;
