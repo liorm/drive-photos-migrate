@@ -1,5 +1,15 @@
 import { SyncStatus, SyncStatusDetail } from '@/types/sync-status';
-import { getDb } from './db';
+import {
+  getCachedFileSyncStatus as getFileSyncStatusFromCache,
+  getCachedFolderSyncStatus as getFolderSyncStatusFromCache,
+  cacheFileSyncStatus as saveFileSyncStatus,
+  cacheFolderSyncStatus as saveFolderSyncStatus,
+  clearFilesSyncStatusCache as clearFilesCache,
+  clearFolderSyncStatusCache as clearFolderCache,
+  clearFoldersSyncStatusCache as clearFoldersCache,
+  clearAllSyncStatusCache as clearAllCache,
+  getCachedFolder,
+} from './db';
 import { isFileUploaded, getUploadRecords } from './uploads-db';
 import { createLogger } from '@/lib/logger';
 
@@ -12,18 +22,7 @@ export async function getCachedFileSyncStatus(
   userEmail: string,
   fileId: string
 ): Promise<SyncStatusDetail | null> {
-  const db = await getDb();
-
-  const cached =
-    db.data.users[userEmail]?.syncStatusCache?.files?.[fileId] || null;
-
-  logger.debug('Retrieved cached file sync status', {
-    userEmail,
-    fileId,
-    found: !!cached,
-  });
-
-  return cached;
+  return getFileSyncStatusFromCache(userEmail, fileId);
 }
 
 /**
@@ -33,18 +32,7 @@ export async function getCachedFolderSyncStatus(
   userEmail: string,
   folderId: string
 ): Promise<SyncStatusDetail | null> {
-  const db = await getDb();
-
-  const cached =
-    db.data.users[userEmail]?.syncStatusCache?.folders?.[folderId] || null;
-
-  logger.debug('Retrieved cached folder sync status', {
-    userEmail,
-    folderId,
-    found: !!cached,
-  });
-
-  return cached;
+  return getFolderSyncStatusFromCache(userEmail, folderId);
 }
 
 /**
@@ -67,7 +55,7 @@ export async function calculateFileSyncStatus(
   };
 
   // Cache the result
-  await cacheFileSyncStatus(userEmail, fileId, status);
+  saveFileSyncStatus(userEmail, fileId, status);
 
   logger.debug('File sync status calculated', {
     userEmail,
@@ -89,12 +77,10 @@ export async function calculateFolderSyncStatus(
   logger.info('Calculating folder sync status', { userEmail, folderId });
   const startTime = Date.now();
 
-  const db = await getDb();
+  // Get cached folder data (page 0 to get all subfolders, but we need all files)
+  const cachedData = getCachedFolder(userEmail, folderId, 0, 999999); // Large page size to get all
 
-  // Get cached folder data
-  const cachedFolder = db.data.users[userEmail]?.folders?.[folderId];
-
-  if (!cachedFolder) {
+  if (!cachedData) {
     logger.warn('Folder not found in cache, returning unsynced', {
       userEmail,
       folderId,
@@ -106,12 +92,12 @@ export async function calculateFolderSyncStatus(
       percentage: 0,
       lastChecked: new Date().toISOString(),
     };
-    await cacheFolderSyncStatus(userEmail, folderId, status);
+    saveFolderSyncStatus(userEmail, folderId, status);
     return status;
   }
 
-  const files = cachedFolder.files;
-  const subfolders = cachedFolder.folders;
+  const files = cachedData.files;
+  const subfolders = cachedData.folders;
 
   let totalSyncedCount = 0;
   let totalItemCount = 0;
@@ -183,7 +169,7 @@ export async function calculateFolderSyncStatus(
   };
 
   // Cache the result
-  await cacheFolderSyncStatus(userEmail, folderId, statusDetail);
+  saveFolderSyncStatus(userEmail, folderId, statusDetail);
 
   const duration = Date.now() - startTime;
   logger.info('Folder sync status calculated', {
@@ -200,58 +186,6 @@ export async function calculateFolderSyncStatus(
 }
 
 /**
- * Cache file sync status
- */
-async function cacheFileSyncStatus(
-  userEmail: string,
-  fileId: string,
-  status: SyncStatusDetail
-): Promise<void> {
-  const db = await getDb();
-
-  // Initialize cache structure if needed
-  if (!db.data.users[userEmail]) {
-    db.data.users[userEmail] = { folders: {} };
-  }
-  if (!db.data.users[userEmail].syncStatusCache) {
-    db.data.users[userEmail].syncStatusCache = { files: {}, folders: {} };
-  }
-
-  // Cache the status
-  db.data.users[userEmail].syncStatusCache!.files[fileId] = status;
-
-  await db.write();
-
-  logger.debug('File sync status cached', { userEmail, fileId });
-}
-
-/**
- * Cache folder sync status
- */
-async function cacheFolderSyncStatus(
-  userEmail: string,
-  folderId: string,
-  status: SyncStatusDetail
-): Promise<void> {
-  const db = await getDb();
-
-  // Initialize cache structure if needed
-  if (!db.data.users[userEmail]) {
-    db.data.users[userEmail] = { folders: {} };
-  }
-  if (!db.data.users[userEmail].syncStatusCache) {
-    db.data.users[userEmail].syncStatusCache = { files: {}, folders: {} };
-  }
-
-  // Cache the status
-  db.data.users[userEmail].syncStatusCache!.folders[folderId] = status;
-
-  await db.write();
-
-  logger.debug('Folder sync status cached', { userEmail, folderId });
-}
-
-/**
  * Clear sync status cache for a folder and ALL parent folders (recursive up to root)
  */
 export async function clearSyncStatusCacheForFolder(
@@ -264,15 +198,8 @@ export async function clearSyncStatusCacheForFolder(
     folderId,
   });
 
-  const db = await getDb();
-
-  if (!db.data.users[userEmail]?.syncStatusCache) {
-    logger.debug('No sync status cache to clear', { userEmail, folderId });
-    return;
-  }
-
   // Clear cache for this folder
-  delete db.data.users[userEmail].syncStatusCache!.folders[folderId];
+  clearFolderCache(userEmail, folderId);
 
   // Get parent folders by traversing up the folder hierarchy
   const parentFolderIds = await getParentFolderIds(
@@ -282,15 +209,13 @@ export async function clearSyncStatusCacheForFolder(
   );
 
   // Clear cache for all parent folders
-  for (const parentId of parentFolderIds) {
-    delete db.data.users[userEmail].syncStatusCache!.folders[parentId];
+  if (parentFolderIds.length > 0) {
+    clearFoldersCache(userEmail, parentFolderIds);
     logger.debug('Cleared parent folder sync status cache', {
       userEmail,
-      parentFolderId: parentId,
+      parentCount: parentFolderIds.length,
     });
   }
-
-  await db.write();
 
   logger.info('Sync status cache cleared for folder and parents', {
     userEmail,
@@ -337,19 +262,7 @@ export async function clearFileSyncStatusCache(
     fileCount: fileIds.length,
   });
 
-  const db = await getDb();
-
-  if (!db.data.users[userEmail]?.syncStatusCache?.files) {
-    logger.debug('No file sync status cache to clear', { userEmail });
-    return;
-  }
-
-  for (const fileId of fileIds) {
-    delete db.data.users[userEmail].syncStatusCache!.files[fileId];
-    logger.debug('Cleared file sync status cache', { userEmail, fileId });
-  }
-
-  await db.write();
+  clearFilesCache(userEmail, fileIds);
 
   logger.info('File sync status cache cleared', {
     userEmail,
@@ -365,13 +278,7 @@ export async function clearAllSyncStatusCache(
 ): Promise<void> {
   logger.info('Clearing all sync status cache', { userEmail });
 
-  const db = await getDb();
+  clearAllCache(userEmail);
 
-  if (db.data.users[userEmail]?.syncStatusCache) {
-    db.data.users[userEmail].syncStatusCache = { files: {}, folders: {} };
-    await db.write();
-    logger.info('All sync status cache cleared', { userEmail });
-  } else {
-    logger.debug('No sync status cache to clear', { userEmail });
-  }
+  logger.info('All sync status cache cleared', { userEmail });
 }

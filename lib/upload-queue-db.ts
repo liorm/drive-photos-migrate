@@ -1,68 +1,9 @@
-import { Low } from 'lowdb';
-import { JSONFile } from 'lowdb/node';
-import path from 'path';
-import {
-  UploadQueueData,
-  QueueItem,
-  QueueItemStatus,
-} from '@/types/upload-queue';
+import { getDatabase } from './sqlite-db';
+import { QueueItem, QueueItemStatus } from '@/types/upload-queue';
 import { isFileUploaded } from './uploads-db';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('upload-queue-db');
-
-// Database file path
-const QUEUE_DB_PATH = path.join(process.cwd(), 'data', 'upload_queue.json');
-
-// Default database structure
-const defaultData: UploadQueueData = {
-  users: {},
-};
-
-let queueDb: Low<UploadQueueData> | null = null;
-
-/**
- * Initialize and get the upload queue database instance
- * Singleton pattern to ensure only one instance
- */
-export async function getQueueDb(): Promise<Low<UploadQueueData>> {
-  if (queueDb) {
-    return queueDb;
-  }
-
-  logger.info('Initializing upload queue database', { dbPath: QUEUE_DB_PATH });
-
-  const adapter = new JSONFile<UploadQueueData>(QUEUE_DB_PATH);
-  queueDb = new Low<UploadQueueData>(adapter, defaultData);
-
-  // Read data from JSON file
-  const startTime = Date.now();
-  await queueDb.read();
-  const readDuration = Date.now() - startTime;
-
-  // If file doesn't exist or is empty, initialize with default data
-  if (!queueDb.data) {
-    logger.info('Upload queue database file empty or missing, initializing', {
-      dbPath: QUEUE_DB_PATH,
-    });
-    queueDb.data = defaultData;
-    const writeStartTime = Date.now();
-    await queueDb.write();
-    const writeDuration = Date.now() - writeStartTime;
-    logger.info('Upload queue database initialized successfully', {
-      dbPath: QUEUE_DB_PATH,
-      writeDurationMs: writeDuration,
-    });
-  } else {
-    logger.info('Upload queue database loaded successfully', {
-      dbPath: QUEUE_DB_PATH,
-      readDurationMs: readDuration,
-      userCount: Object.keys(queueDb.data.users).length,
-    });
-  }
-
-  return queueDb;
-}
 
 /**
  * Add files to the upload queue
@@ -85,25 +26,20 @@ export async function addToQueue(
     fileCount: files.length,
   });
 
-  const db = await getQueueDb();
-
-  // Initialize user queue if doesn't exist
-  if (!db.data.users[userEmail]) {
-    logger.debug('Initializing upload queue for new user', { userEmail });
-    db.data.users[userEmail] = { items: [] };
-  }
-
-  const queue = db.data.users[userEmail].items;
+  const db = getDatabase();
   const added: QueueItem[] = [];
   const skipped: Array<{ driveFileId: string; reason: string }> = [];
 
   for (const file of files) {
-    // Check if already in queue
-    const alreadyInQueue = queue.some(
-      item => item.driveFileId === file.driveFileId && item.status !== 'failed'
-    );
+    // Check if already in queue (not failed)
+    const existingItem = db
+      .prepare(
+        `SELECT id FROM queue_items
+         WHERE user_email = ? AND drive_file_id = ? AND status != 'failed'`
+      )
+      .get(userEmail, file.driveFileId);
 
-    if (alreadyInQueue) {
+    if (existingItem) {
       logger.debug('File already in queue, skipping', {
         userEmail,
         driveFileId: file.driveFileId,
@@ -141,7 +77,21 @@ export async function addToQueue(
       addedAt: new Date().toISOString(),
     };
 
-    queue.push(queueItem);
+    db.prepare(
+      `INSERT INTO queue_items
+       (id, user_email, drive_file_id, file_name, mime_type, file_size, status, added_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      queueItem.id,
+      userEmail,
+      queueItem.driveFileId,
+      queueItem.fileName,
+      queueItem.mimeType,
+      queueItem.fileSize || null,
+      queueItem.status,
+      queueItem.addedAt
+    );
+
     added.push(queueItem);
 
     logger.debug('File added to queue', {
@@ -151,9 +101,6 @@ export async function addToQueue(
       fileName: file.fileName,
     });
   }
-
-  // Persist to disk
-  await db.write();
 
   logger.info('Files added to upload queue', {
     userEmail,
@@ -168,9 +115,43 @@ export async function addToQueue(
  * Get all queue items for a user
  */
 export async function getQueue(userEmail: string): Promise<QueueItem[]> {
-  const db = await getQueueDb();
+  const db = getDatabase();
 
-  const items = db.data.users[userEmail]?.items || [];
+  const rows = db
+    .prepare(
+      `SELECT id, drive_file_id, file_name, mime_type, file_size, status,
+              added_at, started_at, completed_at, error, photos_media_item_id
+       FROM queue_items
+       WHERE user_email = ?
+       ORDER BY added_at ASC`
+    )
+    .all(userEmail) as Array<{
+    id: string;
+    drive_file_id: string;
+    file_name: string;
+    mime_type: string;
+    file_size: number | null;
+    status: QueueItemStatus;
+    added_at: string;
+    started_at: string | null;
+    completed_at: string | null;
+    error: string | null;
+    photos_media_item_id: string | null;
+  }>;
+
+  const items: QueueItem[] = rows.map(row => ({
+    id: row.id,
+    driveFileId: row.drive_file_id,
+    fileName: row.file_name,
+    mimeType: row.mime_type,
+    fileSize: row.file_size || undefined,
+    status: row.status,
+    addedAt: row.added_at,
+    startedAt: row.started_at || undefined,
+    completedAt: row.completed_at || undefined,
+    error: row.error || undefined,
+    photosMediaItemId: row.photos_media_item_id || undefined,
+  }));
 
   logger.debug('Retrieved upload queue', {
     userEmail,
@@ -187,8 +168,51 @@ export async function getQueueByStatus(
   userEmail: string,
   status: QueueItemStatus
 ): Promise<QueueItem[]> {
-  const items = await getQueue(userEmail);
-  return items.filter(item => item.status === status);
+  const db = getDatabase();
+
+  const rows = db
+    .prepare(
+      `SELECT id, drive_file_id, file_name, mime_type, file_size, status,
+              added_at, started_at, completed_at, error, photos_media_item_id
+       FROM queue_items
+       WHERE user_email = ? AND status = ?
+       ORDER BY added_at ASC`
+    )
+    .all(userEmail, status) as Array<{
+    id: string;
+    drive_file_id: string;
+    file_name: string;
+    mime_type: string;
+    file_size: number | null;
+    status: QueueItemStatus;
+    added_at: string;
+    started_at: string | null;
+    completed_at: string | null;
+    error: string | null;
+    photos_media_item_id: string | null;
+  }>;
+
+  const items: QueueItem[] = rows.map(row => ({
+    id: row.id,
+    driveFileId: row.drive_file_id,
+    fileName: row.file_name,
+    mimeType: row.mime_type,
+    fileSize: row.file_size || undefined,
+    status: row.status,
+    addedAt: row.added_at,
+    startedAt: row.started_at || undefined,
+    completedAt: row.completed_at || undefined,
+    error: row.error || undefined,
+    photosMediaItemId: row.photos_media_item_id || undefined,
+  }));
+
+  logger.debug('Retrieved queue items by status', {
+    userEmail,
+    status,
+    itemCount: items.length,
+  });
+
+  return items;
 }
 
 /**
@@ -205,34 +229,58 @@ export async function updateQueueItem(
     update,
   });
 
-  const db = await getQueueDb();
+  const db = getDatabase();
 
-  if (!db.data.users[userEmail]?.items) {
-    logger.warn('User queue not found', { userEmail, queueItemId });
+  // Build dynamic update query
+  const updateFields: string[] = [];
+  const values: (string | undefined)[] = [];
+
+  if (update.status !== undefined) {
+    updateFields.push('status = ?');
+    values.push(update.status);
+  }
+  if (update.startedAt !== undefined) {
+    updateFields.push('started_at = ?');
+    values.push(update.startedAt);
+  }
+  if (update.completedAt !== undefined) {
+    updateFields.push('completed_at = ?');
+    values.push(update.completedAt);
+  }
+  if (update.error !== undefined) {
+    updateFields.push('error = ?');
+    values.push(update.error);
+  }
+  if (update.photosMediaItemId !== undefined) {
+    updateFields.push('photos_media_item_id = ?');
+    values.push(update.photosMediaItemId);
+  }
+
+  if (updateFields.length === 0) {
+    logger.debug('No fields to update', { userEmail, queueItemId });
     return;
   }
 
-  const items = db.data.users[userEmail].items;
-  const itemIndex = items.findIndex(item => item.id === queueItemId);
+  values.push(queueItemId);
+  values.push(userEmail);
 
-  if (itemIndex === -1) {
+  const result = db
+    .prepare(
+      `UPDATE queue_items
+       SET ${updateFields.join(', ')}
+       WHERE id = ? AND user_email = ?`
+    )
+    .run(...values);
+
+  if (result.changes > 0) {
+    logger.debug('Queue item updated', {
+      userEmail,
+      queueItemId,
+      newStatus: update.status,
+    });
+  } else {
     logger.warn('Queue item not found', { userEmail, queueItemId });
-    return;
   }
-
-  // Update the item
-  items[itemIndex] = {
-    ...items[itemIndex],
-    ...update,
-  };
-
-  await db.write();
-
-  logger.debug('Queue item updated', {
-    userEmail,
-    queueItemId,
-    newStatus: items[itemIndex].status,
-  });
 }
 
 /**
@@ -244,25 +292,13 @@ export async function removeFromQueue(
 ): Promise<void> {
   logger.info('Removing item from queue', { userEmail, queueItemId });
 
-  const db = await getQueueDb();
+  const db = getDatabase();
 
-  if (!db.data.users[userEmail]?.items) {
-    logger.debug('User queue not found, nothing to remove', {
-      userEmail,
-      queueItemId,
-    });
-    return;
-  }
+  const result = db
+    .prepare('DELETE FROM queue_items WHERE id = ? AND user_email = ?')
+    .run(queueItemId, userEmail);
 
-  const items = db.data.users[userEmail].items;
-  const initialLength = items.length;
-
-  db.data.users[userEmail].items = items.filter(
-    item => item.id !== queueItemId
-  );
-
-  if (db.data.users[userEmail].items.length < initialLength) {
-    await db.write();
+  if (result.changes > 0) {
     logger.info('Queue item removed successfully', { userEmail, queueItemId });
   } else {
     logger.debug('Queue item not found, nothing removed', {
@@ -278,24 +314,18 @@ export async function removeFromQueue(
 export async function clearCompletedItems(userEmail: string): Promise<number> {
   logger.info('Clearing completed/failed items from queue', { userEmail });
 
-  const db = await getQueueDb();
+  const db = getDatabase();
 
-  if (!db.data.users[userEmail]?.items) {
-    logger.debug('User queue not found, nothing to clear', { userEmail });
-    return 0;
-  }
+  const result = db
+    .prepare(
+      `DELETE FROM queue_items
+       WHERE user_email = ? AND (status = 'completed' OR status = 'failed')`
+    )
+    .run(userEmail);
 
-  const items = db.data.users[userEmail].items;
-  const initialLength = items.length;
-
-  db.data.users[userEmail].items = items.filter(
-    item => item.status !== 'completed' && item.status !== 'failed'
-  );
-
-  const removedCount = initialLength - db.data.users[userEmail].items.length;
+  const removedCount = result.changes;
 
   if (removedCount > 0) {
-    await db.write();
     logger.info('Cleared completed/failed items', { userEmail, removedCount });
   } else {
     logger.debug('No completed/failed items to clear', { userEmail });
@@ -314,14 +344,33 @@ export async function getQueueStats(userEmail: string): Promise<{
   completed: number;
   failed: number;
 }> {
-  const items = await getQueue(userEmail);
+  const db = getDatabase();
+
+  const result = db
+    .prepare(
+      `SELECT
+         COUNT(*) as total,
+         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+         SUM(CASE WHEN status = 'uploading' THEN 1 ELSE 0 END) as uploading,
+         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+       FROM queue_items
+       WHERE user_email = ?`
+    )
+    .get(userEmail) as {
+    total: number;
+    pending: number;
+    uploading: number;
+    completed: number;
+    failed: number;
+  };
 
   const stats = {
-    total: items.length,
-    pending: items.filter(item => item.status === 'pending').length,
-    uploading: items.filter(item => item.status === 'uploading').length,
-    completed: items.filter(item => item.status === 'completed').length,
-    failed: items.filter(item => item.status === 'failed').length,
+    total: result.total,
+    pending: result.pending || 0,
+    uploading: result.uploading || 0,
+    completed: result.completed || 0,
+    failed: result.failed || 0,
   };
 
   logger.debug('Retrieved queue statistics', { userEmail, stats });

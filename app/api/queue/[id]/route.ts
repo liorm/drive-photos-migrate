@@ -11,10 +11,10 @@ const logger = createLogger('api:queue:item');
  */
 async function handleDELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const requestId = Math.random().toString(36).substring(7);
-  const queueItemId = params.id;
+  const { id: queueItemId } = await params;
 
   // Get session
   const session = await auth();

@@ -1,63 +1,8 @@
-import { Low } from 'lowdb';
-import { JSONFile } from 'lowdb/node';
-import path from 'path';
-import { UploadsData, UploadRecord } from '@/types/uploads';
+import { getDatabase } from './sqlite-db';
+import { UploadRecord } from '@/types/uploads';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('uploads-db');
-
-// Database file path
-const UPLOADS_DB_PATH = path.join(process.cwd(), 'data', 'uploads.json');
-
-// Default database structure
-const defaultData: UploadsData = {
-  users: {},
-};
-
-let uploadsDb: Low<UploadsData> | null = null;
-
-/**
- * Initialize and get the uploads database instance
- * Singleton pattern to ensure only one instance
- */
-export async function getUploadsDb(): Promise<Low<UploadsData>> {
-  if (uploadsDb) {
-    return uploadsDb;
-  }
-
-  logger.info('Initializing uploads database', { dbPath: UPLOADS_DB_PATH });
-
-  const adapter = new JSONFile<UploadsData>(UPLOADS_DB_PATH);
-  uploadsDb = new Low<UploadsData>(adapter, defaultData);
-
-  // Read data from JSON file
-  const startTime = Date.now();
-  await uploadsDb.read();
-  const readDuration = Date.now() - startTime;
-
-  // If file doesn't exist or is empty, initialize with default data
-  if (!uploadsDb.data) {
-    logger.info('Uploads database file empty or missing, initializing', {
-      dbPath: UPLOADS_DB_PATH,
-    });
-    uploadsDb.data = defaultData;
-    const writeStartTime = Date.now();
-    await uploadsDb.write();
-    const writeDuration = Date.now() - writeStartTime;
-    logger.info('Uploads database initialized successfully', {
-      dbPath: UPLOADS_DB_PATH,
-      writeDurationMs: writeDuration,
-    });
-  } else {
-    logger.info('Uploads database loaded successfully', {
-      dbPath: UPLOADS_DB_PATH,
-      readDurationMs: readDuration,
-      userCount: Object.keys(uploadsDb.data.users).length,
-    });
-  }
-
-  return uploadsDb;
-}
 
 /**
  * Check if a Drive file has been uploaded to Photos
@@ -66,9 +11,15 @@ export async function isFileUploaded(
   userEmail: string,
   driveFileId: string
 ): Promise<boolean> {
-  const db = await getUploadsDb();
+  const db = getDatabase();
 
-  const isUploaded = !!db.data.users[userEmail]?.[driveFileId];
+  const result = db
+    .prepare(
+      'SELECT id FROM uploads WHERE user_email = ? AND drive_file_id = ?'
+    )
+    .get(userEmail, driveFileId);
+
+  const isUploaded = !!result;
 
   logger.debug('Checked if file is uploaded', {
     userEmail,
@@ -86,17 +37,36 @@ export async function getUploadRecord(
   userEmail: string,
   driveFileId: string
 ): Promise<UploadRecord | null> {
-  const db = await getUploadsDb();
+  const db = getDatabase();
 
-  const record = db.data.users[userEmail]?.[driveFileId] || null;
+  const result = db
+    .prepare(
+      `SELECT photos_media_item_id, uploaded_at, file_name, mime_type
+       FROM uploads
+       WHERE user_email = ? AND drive_file_id = ?`
+    )
+    .get(userEmail, driveFileId) as
+    | {
+        photos_media_item_id: string;
+        uploaded_at: string;
+        file_name: string;
+        mime_type: string;
+      }
+    | undefined;
 
-  logger.debug('Retrieved upload record', {
-    userEmail,
-    driveFileId,
-    found: !!record,
-  });
+  if (!result) {
+    logger.debug('Upload record not found', { userEmail, driveFileId });
+    return null;
+  }
 
-  return record;
+  logger.debug('Retrieved upload record', { userEmail, driveFileId });
+
+  return {
+    photosMediaItemId: result.photos_media_item_id,
+    uploadedAt: result.uploaded_at,
+    fileName: result.file_name,
+    mimeType: result.mime_type,
+  };
 }
 
 /**
@@ -112,18 +82,45 @@ export async function getUploadRecords(
     fileCount: driveFileIds.length,
   });
 
-  const db = await getUploadsDb();
-  const userRecords = db.data.users[userEmail] || {};
-
-  const results = new Map<string, UploadRecord | null>();
-
-  for (const fileId of driveFileIds) {
-    results.set(fileId, userRecords[fileId] || null);
+  if (driveFileIds.length === 0) {
+    return new Map();
   }
 
-  const uploadedCount = Array.from(results.values()).filter(
-    r => r !== null
-  ).length;
+  const db = getDatabase();
+
+  const placeholders = driveFileIds.map(() => '?').join(',');
+  const results = db
+    .prepare(
+      `SELECT drive_file_id, photos_media_item_id, uploaded_at, file_name, mime_type
+       FROM uploads
+       WHERE user_email = ? AND drive_file_id IN (${placeholders})`
+    )
+    .all(userEmail, ...driveFileIds) as Array<{
+    drive_file_id: string;
+    photos_media_item_id: string;
+    uploaded_at: string;
+    file_name: string;
+    mime_type: string;
+  }>;
+
+  const recordMap = new Map<string, UploadRecord | null>();
+
+  // Initialize all file IDs with null
+  for (const fileId of driveFileIds) {
+    recordMap.set(fileId, null);
+  }
+
+  // Fill in the records that exist
+  for (const row of results) {
+    recordMap.set(row.drive_file_id, {
+      photosMediaItemId: row.photos_media_item_id,
+      uploadedAt: row.uploaded_at,
+      fileName: row.file_name,
+      mimeType: row.mime_type,
+    });
+  }
+
+  const uploadedCount = results.length;
 
   logger.debug('Bulk check completed', {
     userEmail,
@@ -132,7 +129,7 @@ export async function getUploadRecords(
     unuploadedCount: driveFileIds.length - uploadedCount,
   });
 
-  return results;
+  return recordMap;
 }
 
 /**
@@ -152,24 +149,25 @@ export async function recordUpload(
     fileName,
   });
 
-  const db = await getUploadsDb();
+  const db = getDatabase();
 
-  // Initialize user if doesn't exist
-  if (!db.data.users[userEmail]) {
-    logger.debug('Initializing upload records for new user', { userEmail });
-    db.data.users[userEmail] = {};
-  }
-
-  // Record upload
-  db.data.users[userEmail][driveFileId] = {
+  db.prepare(
+    `INSERT INTO uploads (user_email, drive_file_id, photos_media_item_id, uploaded_at, file_name, mime_type)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(user_email, drive_file_id)
+     DO UPDATE SET
+       photos_media_item_id = excluded.photos_media_item_id,
+       uploaded_at = excluded.uploaded_at,
+       file_name = excluded.file_name,
+       mime_type = excluded.mime_type`
+  ).run(
+    userEmail,
+    driveFileId,
     photosMediaItemId,
-    uploadedAt: new Date().toISOString(),
+    new Date().toISOString(),
     fileName,
-    mimeType,
-  };
-
-  // Persist to disk
-  await db.write();
+    mimeType
+  );
 
   logger.info('Upload recorded successfully', {
     userEmail,
@@ -195,28 +193,38 @@ export async function recordUploads(
     uploadCount: uploads.length,
   });
 
-  const db = await getUploadsDb();
-
-  // Initialize user if doesn't exist
-  if (!db.data.users[userEmail]) {
-    logger.debug('Initializing upload records for new user', { userEmail });
-    db.data.users[userEmail] = {};
+  if (uploads.length === 0) {
+    return;
   }
 
+  const db = getDatabase();
   const uploadedAt = new Date().toISOString();
 
-  // Record all uploads
-  for (const upload of uploads) {
-    db.data.users[userEmail][upload.driveFileId] = {
-      photosMediaItemId: upload.photosMediaItemId,
-      uploadedAt,
-      fileName: upload.fileName,
-      mimeType: upload.mimeType,
-    };
-  }
+  const transaction = db.transaction(() => {
+    const insert = db.prepare(
+      `INSERT INTO uploads (user_email, drive_file_id, photos_media_item_id, uploaded_at, file_name, mime_type)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_email, drive_file_id)
+       DO UPDATE SET
+         photos_media_item_id = excluded.photos_media_item_id,
+         uploaded_at = excluded.uploaded_at,
+         file_name = excluded.file_name,
+         mime_type = excluded.mime_type`
+    );
 
-  // Persist to disk
-  await db.write();
+    for (const upload of uploads) {
+      insert.run(
+        userEmail,
+        upload.driveFileId,
+        upload.photosMediaItemId,
+        uploadedAt,
+        upload.fileName,
+        upload.mimeType
+      );
+    }
+  });
+
+  transaction();
 
   logger.info('Batch uploads recorded successfully', {
     userEmail,
@@ -233,11 +241,13 @@ export async function deleteUploadRecord(
 ): Promise<void> {
   logger.info('Deleting upload record', { userEmail, driveFileId });
 
-  const db = await getUploadsDb();
+  const db = getDatabase();
 
-  if (db.data.users[userEmail]?.[driveFileId]) {
-    delete db.data.users[userEmail][driveFileId];
-    await db.write();
+  const result = db
+    .prepare('DELETE FROM uploads WHERE user_email = ? AND drive_file_id = ?')
+    .run(userEmail, driveFileId);
+
+  if (result.changes > 0) {
     logger.info('Upload record deleted successfully', {
       userEmail,
       driveFileId,
@@ -262,28 +272,25 @@ export async function deleteUploadRecords(
     fileCount: driveFileIds.length,
   });
 
-  const db = await getUploadsDb();
-
-  if (!db.data.users[userEmail]) {
-    logger.debug('No upload records for user, nothing to delete', {
-      userEmail,
-    });
+  if (driveFileIds.length === 0) {
+    logger.debug('No file IDs provided, nothing to delete', { userEmail });
     return;
   }
 
-  let deletedCount = 0;
-  for (const fileId of driveFileIds) {
-    if (db.data.users[userEmail][fileId]) {
-      delete db.data.users[userEmail][fileId];
-      deletedCount++;
-    }
-  }
+  const db = getDatabase();
 
-  if (deletedCount > 0) {
-    await db.write();
+  const placeholders = driveFileIds.map(() => '?').join(',');
+  const result = db
+    .prepare(
+      `DELETE FROM uploads
+       WHERE user_email = ? AND drive_file_id IN (${placeholders})`
+    )
+    .run(userEmail, ...driveFileIds);
+
+  if (result.changes > 0) {
     logger.info('Batch upload records deleted successfully', {
       userEmail,
-      deletedCount,
+      deletedCount: result.changes,
     });
   } else {
     logger.debug('No upload records found to delete', { userEmail });
@@ -294,9 +301,13 @@ export async function deleteUploadRecords(
  * Get count of uploaded files for a user
  */
 export async function getUploadedFileCount(userEmail: string): Promise<number> {
-  const db = await getUploadsDb();
+  const db = getDatabase();
 
-  const count = Object.keys(db.data.users[userEmail] || {}).length;
+  const result = db
+    .prepare('SELECT COUNT(*) as count FROM uploads WHERE user_email = ?')
+    .get(userEmail) as { count: number };
+
+  const count = result.count;
 
   logger.debug('Retrieved uploaded file count', { userEmail, count });
 

@@ -1,4 +1,10 @@
-import { getDb } from './db';
+import {
+  isFolderCached as checkFolderCached,
+  getCachedFolder,
+  cacheFolderContents,
+  clearFolderFromCache,
+  getCachedFolderCount as getFolderCount,
+} from './db';
 import { CachedPageResponse } from '@/types/drive-cache';
 import { listAllDriveFiles } from './google-drive';
 import { createLogger } from '@/lib/logger';
@@ -13,20 +19,7 @@ export async function isFolderCached(
   userEmail: string,
   folderId: string
 ): Promise<boolean> {
-  const db = await getDb();
-
-  const isCached = !!(
-    db.data.users[userEmail]?.folders &&
-    db.data.users[userEmail].folders[folderId]
-  );
-
-  logger.debug('Checked if folder is cached', {
-    userEmail,
-    folderId,
-    isCached,
-  });
-
-  return isCached;
+  return checkFolderCached(userEmail, folderId);
 }
 
 /**
@@ -45,38 +38,33 @@ export async function getCachedFolderPage(
     pageSize,
   });
 
-  const db = await getDb();
+  const result = getCachedFolder(userEmail, folderId, page, pageSize);
 
-  const cachedFolder = db.data.users[userEmail]?.folders?.[folderId];
-
-  if (!cachedFolder) {
+  if (!result) {
     logger.debug('Folder not found in cache', { userEmail, folderId });
     return null;
   }
 
-  // Folders are always shown first (not paginated)
-  const folders = cachedFolder.folders;
-
-  // Paginate files only
-  const startIndex = page * pageSize;
-  const endIndex = startIndex + pageSize;
-  const files = cachedFolder.files.slice(startIndex, endIndex);
+  // Calculate hasMore based on pagination
+  const totalFiles = result.totalCount - result.folders.length; // Subtract folders from total
+  const offset = page * pageSize;
+  const hasMore = offset + result.files.length < totalFiles;
 
   logger.debug('Retrieved cached folder page', {
     userEmail,
     folderId,
     page,
-    filesInPage: files.length,
-    foldersInPage: page === 0 ? folders.length : 0,
-    hasMore: endIndex < cachedFolder.files.length,
+    filesInPage: result.files.length,
+    foldersInPage: result.folders.length,
+    hasMore,
   });
 
   return {
-    files,
-    folders: page === 0 ? folders : [], // Only return folders on first page
-    totalCount: cachedFolder.totalCount,
-    hasMore: endIndex < cachedFolder.files.length,
-    lastSynced: cachedFolder.lastSynced,
+    files: result.files,
+    folders: result.folders,
+    totalCount: result.totalCount,
+    hasMore,
+    lastSynced: result.lastSynced,
   };
 }
 
@@ -109,24 +97,8 @@ export async function syncFolderToCache(
         folderCount: allFolders.length,
       });
 
-      const db = await getDb();
-
-      // Initialize user cache if it doesn't exist
-      if (!db.data.users[userEmail]) {
-        logger.debug('Initializing cache for new user', { userEmail });
-        db.data.users[userEmail] = { folders: {} };
-      }
-
-      // Store in cache
-      db.data.users[userEmail].folders[folderId] = {
-        files: allFiles,
-        folders: allFolders,
-        lastSynced: new Date().toISOString(),
-        totalCount: allFiles.length + allFolders.length,
-      };
-
-      // Persist to disk
-      await db.write();
+      // Store in cache (synchronous operation)
+      cacheFolderContents(userEmail, folderId, allFiles, allFolders);
 
       const duration = Date.now() - startTime;
       logger.info('Folder sync completed successfully', {
@@ -154,22 +126,13 @@ export async function clearFolderCache(
 ): Promise<void> {
   logger.info('Clearing folder cache', { userEmail, folderId });
 
-  const db = await getDb();
+  clearFolderFromCache(userEmail, folderId);
 
-  if (db.data.users[userEmail]?.folders?.[folderId]) {
-    delete db.data.users[userEmail].folders[folderId];
-    await db.write();
-    logger.info('Folder cache cleared successfully', { userEmail, folderId });
+  // Also clear sync status cache for this folder and all parents
+  const { clearSyncStatusCacheForFolder } = await import('./sync-status');
+  await clearSyncStatusCacheForFolder(userEmail, folderId, accessToken);
 
-    // Also clear sync status cache for this folder and all parents
-    const { clearSyncStatusCacheForFolder } = await import('./sync-status');
-    await clearSyncStatusCacheForFolder(userEmail, folderId, accessToken);
-  } else {
-    logger.debug('Folder cache not found, nothing to clear', {
-      userEmail,
-      folderId,
-    });
-  }
+  logger.info('Folder cache cleared successfully', { userEmail, folderId });
 }
 
 /**
@@ -179,9 +142,5 @@ export async function getCachedFolderCount(
   userEmail: string,
   folderId: string
 ): Promise<number> {
-  const db = await getDb();
-
-  const cachedFolder = db.data.users[userEmail]?.folders?.[folderId];
-
-  return cachedFolder?.totalCount || 0;
+  return getFolderCount(userEmail, folderId);
 }

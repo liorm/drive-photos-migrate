@@ -4,7 +4,11 @@ import { createLogger } from './logger';
 
 const logger = createLogger('error-handler');
 
-type ApiHandler = (request: NextRequest) => Promise<NextResponse>;
+type ApiHandler = (
+  request: NextRequest,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ...args: any[]
+) => Promise<NextResponse>;
 
 /**
  * Global error handler wrapper for API routes
@@ -21,9 +25,13 @@ type ApiHandler = (request: NextRequest) => Promise<NextResponse>;
  * ```
  */
 export function withErrorHandler(handler: ApiHandler): ApiHandler {
-  return async (request: NextRequest): Promise<NextResponse> => {
+  return async (
+    request: NextRequest,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ...args: any[]
+  ): Promise<NextResponse> => {
     try {
-      return await handler(request);
+      return await handler(request, ...args);
     } catch (error) {
       // Log the error with full context
       if (ExtendedError.isExtendedError(error)) {
