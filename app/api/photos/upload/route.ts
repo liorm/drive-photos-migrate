@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { downloadDriveFile, batchUploadFiles } from '@/lib/google-photos';
-import { recordUploads } from '@/lib/uploads-db';
-import { clearSyncStatusCacheForFolder } from '@/lib/sync-status';
+import { recordUploads, deleteUploadRecords } from '@/lib/uploads-db';
+import {
+  clearSyncStatusCacheForFolder,
+  clearFileSyncStatusCache,
+} from '@/lib/sync-status';
 import { getDriveFile } from '@/lib/google-drive';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
@@ -73,6 +76,17 @@ async function handlePOST(request: NextRequest) {
     userEmail,
     fileCount: fileIds.length,
     folderId,
+  });
+
+  // Clear existing sync status before re-upload to ensure accurate status
+  // If upload fails, file will correctly show as unsynced
+  await deleteUploadRecords(userEmail, fileIds);
+  await clearFileSyncStatusCache(userEmail, fileIds);
+
+  logger.info('Cleared existing sync status before upload', {
+    requestId,
+    userEmail,
+    fileCount: fileIds.length,
   });
 
   // Fetch file metadata and download files from Drive
