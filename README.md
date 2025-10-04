@@ -1,4 +1,4 @@
-# **Google Drive to Google Photos Uploader**
+# **Drive Photos Migrate**
 
 A web application built with Next.js to help you seamlessly upload files from your Google Drive to your Google Photos library. It keeps track of uploaded files to prevent duplicates.
 
@@ -67,7 +67,7 @@ A web application built with Next.js to help you seamlessly upload files from yo
 
 1. **Clone the repository:**  
    git clone \<repository-url\>  
-   cd google-photos
+   cd drive-photos-migrate
 
 2. **Install dependencies:**  
    pnpm install

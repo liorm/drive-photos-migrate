@@ -1,5 +1,5 @@
 {
-  "name": "google-photos",
+  "name": "drive-photos-migrate",
   "version": "1.0.0",
   "description": "A web application built with Next.js to help you seamlessly upload files from your Google Drive to your Google Photos library. It keeps track of uploaded files to prevent duplicates.",
   "scripts": {
