@@ -8,18 +8,53 @@ import {
   LogIn,
   Menu,
   ListOrdered,
+  Bell,
+  Loader2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import Image from 'next/image';
 import { useState } from 'react';
+import { useOperationNotifications } from './OperationNotificationsContext';
 
 const menuItems = [
   { name: 'Dashboard', href: '/', icon: Home },
   { name: 'Browse', href: '/drive', icon: FolderOpen },
   { name: 'Upload Queue', href: '/queue', icon: ListOrdered },
 ];
+
+function DockedOperations() {
+  const { operations, isOpen, toggle } = useOperationNotifications();
+  const activeOperations = operations.length;
+
+  if (isOpen || activeOperations === 0) {
+    return null;
+  }
+
+  return (
+    <div className="px-3 pb-4">
+      <button
+        onClick={toggle}
+        className="group flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-gray-100"
+      >
+        <div className="relative">
+          <Bell className="h-5 w-5 text-gray-500 group-hover:text-gray-900" />
+          {activeOperations > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+              {activeOperations}
+            </span>
+          )}
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-medium text-gray-900">Ongoing Ops</p>
+          <p className="text-xs text-gray-500">Click to view</p>
+        </div>
+        <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+      </button>
+    </div>
+  );
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -89,6 +124,9 @@ export default function Sidebar() {
             })}
           </ul>
         </div>
+
+        {/* Docked Operations */}
+        <DockedOperations />
 
         {/* Auth Section at Bottom */}
         <div className="border-t border-gray-200 bg-gray-50 px-3 py-4">

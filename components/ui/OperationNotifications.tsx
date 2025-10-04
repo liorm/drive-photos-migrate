@@ -1,58 +1,25 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
 import { Operation, OperationStatus } from '@/lib/operation-status';
 import { CheckCircle2, XCircle, Loader2, AlertTriangle, X } from 'lucide-react';
+import { useOperationNotifications } from '@/components/OperationNotificationsContext';
 
 interface NotificationItemProps {
   operation: Operation;
-  onDismiss: (id: string) => void;
 }
 
-function NotificationItem({ operation, onDismiss }: NotificationItemProps) {
-  const [isExiting, setIsExiting] = useState(false);
-
-  const handleDismiss = useCallback(() => {
-    setIsExiting(true);
-    setTimeout(() => {
-      onDismiss(operation.id);
-    }, 300); // Match animation duration
-  }, [onDismiss, operation.id]);
-
-  // Auto-dismiss completed operations after 5 seconds
-  useEffect(() => {
-    if (operation.status === OperationStatus.COMPLETED) {
-      const timer = setTimeout(() => {
-        handleDismiss();
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [operation.status, handleDismiss]);
-
+function NotificationItem({ operation }: NotificationItemProps) {
   const getIcon = () => {
     switch (operation.status) {
       case OperationStatus.COMPLETED:
-        return <CheckCircle2 className="h-5 w-5 text-green-500" />;
+        return <CheckCircle2 className="h-7 w-7 text-green-400" />;
       case OperationStatus.FAILED:
-        return <XCircle className="h-5 w-5 text-red-500" />;
+        return <XCircle className="h-7 w-7 text-red-400" />;
       case OperationStatus.RETRYING:
-        return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
+        return <AlertTriangle className="h-7 w-7 text-yellow-400" />;
       case OperationStatus.IN_PROGRESS:
       case OperationStatus.PENDING:
-        return <Loader2 className="h-5 w-5 animate-spin text-blue-500" />;
-    }
-  };
-
-  const getBorderColor = () => {
-    switch (operation.status) {
-      case OperationStatus.COMPLETED:
-        return 'border-green-500';
-      case OperationStatus.FAILED:
-        return 'border-red-500';
-      case OperationStatus.RETRYING:
-        return 'border-yellow-500';
-      default:
-        return 'border-blue-500';
+        return <Loader2 className="h-7 w-7 animate-spin text-sky-400" />;
     }
   };
 
@@ -64,75 +31,80 @@ function NotificationItem({ operation, onDismiss }: NotificationItemProps) {
   };
 
   return (
-    <div
-      className={`mb-3 w-full max-w-md rounded-lg border-l-4 bg-white p-4 shadow-lg transition-all duration-300 dark:bg-gray-800 ${getBorderColor()} ${isExiting ? 'translate-x-full opacity-0' : 'translate-x-0 opacity-100'} `}
-    >
+    <div className="w-full transform-gpu rounded-none bg-transparent p-3 shadow-none transition-all duration-300 ease-in-out">
       <div className="flex items-start gap-3">
-        {getIcon()}
+        <div className="mt-0.5 flex-shrink-0">{getIcon()}</div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+          <div className="flex items-center justify-between">
+            <p className="truncate text-sm font-semibold text-white">
               {operation.name}
             </p>
-            <button
-              onClick={handleDismiss}
-              className="flex-shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              aria-label="Dismiss notification"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </div>
 
           {operation.description && (
-            <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+            <p className="mt-0.5 text-xs text-slate-300">
               {operation.description}
             </p>
           )}
 
-          {/* Progress bar */}
           {operation.progress && (
             <div className="mt-2">
-              <div className="mb-1 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+              <div className="mb-1 flex items-center justify-between text-xs text-slate-300">
                 <span>
                   {operation.progress.current} / {operation.progress.total}
                 </span>
-                <span>{operation.progress.percentage}%</span>
+                <span className="font-medium text-slate-200">
+                  {operation.progress.percentage}%
+                </span>
               </div>
-              <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-gray-700">
+
+              <div className="relative h-3 w-full overflow-visible rounded-full bg-slate-800">
                 <div
-                  className={`h-2 rounded-full transition-all duration-300 ${
+                  className={`absolute top-0 left-0 h-3 rounded-full transition-all duration-300 ${
                     operation.status === OperationStatus.FAILED
                       ? 'bg-red-500'
                       : operation.status === OperationStatus.RETRYING
-                        ? 'bg-yellow-500'
+                        ? 'bg-yellow-400'
                         : operation.status === OperationStatus.COMPLETED
-                          ? 'bg-green-500'
-                          : 'bg-blue-500'
+                          ? 'bg-green-400'
+                          : 'bg-sky-400'
                   }`}
                   style={{ width: `${operation.progress.percentage}%` }}
+                />
+
+                {/* indicator dot */}
+                <div
+                  className="absolute top-1/2 z-10 -translate-y-1/2 transform rounded-full shadow-md"
+                  style={{
+                    left: `${operation.progress.percentage}%`,
+                    width: 10,
+                    height: 10,
+                    marginLeft: -5,
+                    background:
+                      operation.status === OperationStatus.RETRYING
+                        ? '#F59E0B'
+                        : operation.status === OperationStatus.FAILED
+                          ? '#EF4444'
+                          : operation.status === OperationStatus.COMPLETED
+                            ? '#34D399'
+                            : '#38BDF8',
+                  }}
                 />
               </div>
             </div>
           )}
 
-          {/* Status text */}
-          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          <p className="mt-2 text-sm font-medium text-slate-300">
             {getStatusText()}
           </p>
 
-          {/* Error message */}
-          {operation.error && operation.status === OperationStatus.FAILED && (
-            <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-              {operation.error.message}
-            </p>
-          )}
-
-          {/* Retry message */}
-          {operation.error && operation.status === OperationStatus.RETRYING && (
-            <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
-              {operation.error.message}
-            </p>
-          )}
+          {operation.error &&
+            (operation.status === OperationStatus.FAILED ||
+              operation.status === OperationStatus.RETRYING) && (
+              <p className="mt-2 text-sm break-words text-red-300">
+                {operation.error.message}
+              </p>
+            )}
         </div>
       </div>
     </div>
@@ -140,70 +112,35 @@ function NotificationItem({ operation, onDismiss }: NotificationItemProps) {
 }
 
 export function OperationNotifications() {
-  const [operations, setOperations] = useState<Operation[]>([]);
+  const { operations, isOpen, toggle } = useOperationNotifications();
 
-  const handleDismiss = useCallback((id: string) => {
-    setOperations(prev => prev.filter(op => op.id !== id));
-  }, []);
-
-  useEffect(() => {
-    // Connect to SSE endpoint for real-time updates
-    const eventSource = new EventSource('/api/operations/stream');
-
-    eventSource.addEventListener('connected', event => {
-      const data = JSON.parse(event.data);
-      setOperations(data.operations || []);
-    });
-
-    eventSource.addEventListener('operation:created', event => {
-      const operation: Operation = JSON.parse(event.data);
-      setOperations(prev => [...prev, operation]);
-    });
-
-    eventSource.addEventListener('operation:updated', event => {
-      const operation: Operation = JSON.parse(event.data);
-      setOperations(prev =>
-        prev.map(op => (op.id === operation.id ? operation : op))
-      );
-    });
-
-    eventSource.addEventListener('operation:removed', event => {
-      const data = JSON.parse(event.data);
-      setOperations(prev => prev.filter(op => op.id !== data.id));
-    });
-
-    eventSource.addEventListener('heartbeat', () => {
-      // Keep connection alive
-    });
-
-    eventSource.onerror = error => {
-      console.error('[OperationNotifications] SSE connection error:', error);
-      eventSource.close();
-
-      // Retry connection after 5 seconds
-      setTimeout(() => {
-        window.location.reload();
-      }, 5000);
-    };
-
-    return () => {
-      eventSource.close();
-    };
-  }, []);
-
-  if (operations.length === 0) {
+  if (!isOpen || operations.length === 0) {
     return null;
   }
 
   return (
-    <div className="fixed right-4 bottom-4 z-50 flex max-h-[80vh] flex-col items-end overflow-y-auto">
-      {operations.map(operation => (
-        <NotificationItem
-          key={operation.id}
-          operation={operation}
-          onDismiss={handleDismiss}
-        />
-      ))}
+    <div className="fixed inset-0 z-50 flex items-end justify-start p-4 sm:p-6 lg:pl-64">
+      <div className="flex w-full max-w-sm flex-col space-y-0">
+        <div className="flex items-center justify-between rounded-none bg-slate-900/80 px-3 py-2 shadow-none backdrop-blur-sm backdrop-filter">
+          <h3 className="text-sm font-semibold text-white">
+            Ongoing Operations
+          </h3>
+          <button
+            onClick={toggle}
+            className="rounded-full p-1.5 text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
+            aria-label="Close notifications"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="max-h-[70vh] w-full overflow-y-auto rounded-none bg-slate-900/90 pr-2">
+          <div className="divide-y divide-slate-800">
+            {operations.map(operation => (
+              <NotificationItem key={operation.id} operation={operation} />
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
