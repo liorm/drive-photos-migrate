@@ -2,12 +2,33 @@ import { NextResponse } from 'next/server';
 import { Session } from 'next-auth';
 import { GoogleAuthContext } from '@/types/auth';
 import { createLogger } from './logger';
+import { refreshAccessToken } from './token-refresh';
 
 const logger = createLogger('auth-utils');
 
 export interface AuthorizedSession {
   userEmail: string;
   auth: GoogleAuthContext;
+}
+
+class GoogleAuthContextImpl implements GoogleAuthContext {
+  constructor(
+    private _accessToken: string,
+    private _refreshToken: string
+  ) {}
+
+  get accessToken() {
+    return this._accessToken;
+  }
+  get refreshToken() {
+    return this._refreshToken;
+  }
+
+  async refresh() {
+    const result = await refreshAccessToken(this._refreshToken);
+    this._refreshToken = result.refreshToken;
+    this._accessToken = result.accessToken;
+  }
 }
 
 /**
@@ -56,10 +77,10 @@ export function validateSession(
     success: true,
     data: {
       userEmail: session.user.email,
-      auth: {
-        accessToken: session.accessToken,
-        refreshToken: session.refreshToken,
-      },
+      auth: new GoogleAuthContextImpl(
+        session.accessToken,
+        session.refreshToken
+      ),
     },
   };
 }

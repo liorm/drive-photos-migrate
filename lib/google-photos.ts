@@ -95,11 +95,11 @@ async function uploadBytes({
     size: fileBuffer.length,
   });
 
-  const { result: response } = await withGoogleAuthRetry(auth, async token => {
+  const { result: response } = await withGoogleAuthRetry(auth, async auth => {
     const res = await fetchWithRetry(`${PHOTOS_API_BASE}/uploads`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${auth.accessToken}`,
         'Content-Type': 'application/octet-stream',
         'X-Goog-Upload-File-Name': fileName,
         'X-Goog-Upload-Protocol': 'raw',
@@ -149,13 +149,13 @@ async function createMediaItemSingle({
     ],
   };
 
-  const { result: response } = await withGoogleAuthRetry(auth, async token => {
+  const { result: response } = await withGoogleAuthRetry(auth, async auth => {
     const res = await fetchWithRetry(
       `${PHOTOS_API_BASE}/mediaItems:batchCreate`,
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${auth.accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(requestBody),
@@ -221,13 +221,13 @@ export async function batchCreateMediaItems({
     })),
   };
 
-  const { result: response } = await withGoogleAuthRetry(auth, async token => {
+  const { result: response } = await withGoogleAuthRetry(auth, async auth => {
     const res = await fetchWithRetry(
       `${PHOTOS_API_BASE}/mediaItems:batchCreate`,
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${auth.accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(requestBody),

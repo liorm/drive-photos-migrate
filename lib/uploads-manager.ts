@@ -551,7 +551,7 @@ class UploadsManager {
                   });
 
                   const uploadToken = await this.uploadBytes({
-                    accessToken: auth.accessToken,
+                    auth: auth,
                     fileBuffer: buffer,
                     fileName: item.fileName,
                     mimeType: item.mimeType,
@@ -805,14 +805,14 @@ class UploadsManager {
    * Helper method extracted from google-photos.ts
    */
   private async uploadBytes({
-    accessToken,
+    auth,
     fileBuffer,
     fileName,
     mimeType: _mimeType,
     operationId,
     signal,
   }: {
-    accessToken: string;
+    auth: GoogleAuthContext;
     fileBuffer: Buffer;
     fileName: string;
     mimeType: string;
@@ -831,7 +831,7 @@ class UploadsManager {
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${auth.accessToken}`,
           'Content-Type': 'application/octet-stream',
           'X-Goog-Upload-File-Name': fileName,
           'X-Goog-Upload-Protocol': 'raw',

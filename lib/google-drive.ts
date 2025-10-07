@@ -18,16 +18,15 @@ const logger = createLogger('google-drive');
 /**
  * Initialize Google Drive API client with OAuth2 credentials
  */
-function getDriveClient(accessToken: string) {
+function getDriveClient(auth: GoogleAuthContext) {
   const oauth2Client = new google.auth.OAuth2();
-  oauth2Client.setCredentials({ access_token: accessToken });
+  oauth2Client.setCredentials({ access_token: auth.accessToken });
 
   return google.drive({ version: 'v3', auth: oauth2Client });
 }
 
 /**
  * List files and folders from Google Drive
- * @param accessToken - User's OAuth access token
  * @param folderId - Optional folder ID to list contents (defaults to root)
  * @param pageToken - Optional pagination token
  * @param operationId - Optional operation ID for status tracking
@@ -53,8 +52,8 @@ export async function listDriveFiles({
       try {
         const { result: response } = await withGoogleAuthRetry(
           auth,
-          async token => {
-            const drive = getDriveClient(token);
+          async auth => {
+            const drive = getDriveClient(auth);
 
             // Build query to list files in specified folder
             // Filter for supported media types OR folders
@@ -121,7 +120,6 @@ export async function listDriveFiles({
 
 /**
  * Get file metadata by ID
- * @param accessToken - User's OAuth access token
  * @param fileId - File ID to retrieve
  * @param operationId - Optional operation ID for status tracking
  * @returns File metadata
@@ -144,8 +142,8 @@ export async function getDriveFile({
       try {
         const { result: response } = await withGoogleAuthRetry(
           auth,
-          async token => {
-            const drive = getDriveClient(token);
+          async auth => {
+            const drive = getDriveClient(auth);
             return await drive.files.get({
               fileId,
               fields:
@@ -194,7 +192,6 @@ export async function getDriveFile({
 
 /**
  * Fetch ALL files and folders from a Google Drive folder (across all pages)
- * @param accessToken - User's OAuth access token
  * @param folderId - Folder ID to list contents (defaults to root)
  * @param operationId - Optional operation ID for status tracking
  * @returns All files and folders (not paginated)
@@ -288,7 +285,6 @@ export async function listAllDriveFiles({
 
 /**
  * Get folder path (breadcrumbs) from root to current folder
- * @param accessToken - User's OAuth access token
  * @param folderId - Current folder ID
  * @param operationId - Optional operation ID for status tracking
  * @returns Array of folder metadata from root to current
@@ -328,8 +324,8 @@ export async function getFolderPath({
       } else {
         const response = await retryWithBackoff(
           async () => {
-            const { result } = await withGoogleAuthRetry(auth, async token => {
-              const drv = getDriveClient(token);
+            const { result } = await withGoogleAuthRetry(auth, async auth => {
+              const drv = getDriveClient(auth);
               return await drv.files.get({
                 fileId: currentId,
                 fields: 'id, name, parents',

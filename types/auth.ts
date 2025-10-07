@@ -1,6 +1,9 @@
 export interface GoogleAuthContext {
-  accessToken: string;
-  refreshToken: string;
+  readonly accessToken: string;
+  readonly refreshToken: string;
+
+  // Rotate the contained access token obtained from accessToken using the refreshToken
+  refresh: () => Promise<void>;
 }
 
 // Utility type guard (optional use)

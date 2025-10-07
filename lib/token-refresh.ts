@@ -94,11 +94,11 @@ export function isAuthError(error: unknown): boolean {
  */
 export async function withGoogleAuthRetry<T>(
   auth: GoogleAuthContext,
-  exec: (token: string) => Promise<T>
-): Promise<{ result: T; accessToken: string }> {
+  exec: (auth: GoogleAuthContext) => Promise<T>
+): Promise<{ result: T }> {
   try {
-    const result = await exec(auth.accessToken);
-    return { result, accessToken: auth.accessToken };
+    const result = await exec(auth);
+    return { result };
   } catch (err) {
     if (!auth.refreshToken || !isAuthError(err)) throw err;
 
@@ -108,8 +108,8 @@ export async function withGoogleAuthRetry<T>(
         error: (err as Error).message,
       }
     );
-    const refreshed = await refreshAccessToken(auth.refreshToken);
-    const result = await exec(refreshed.accessToken);
-    return { result, accessToken: refreshed.accessToken };
+    await auth.refresh();
+    const result = await exec(auth);
+    return { result };
   }
 }
