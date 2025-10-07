@@ -9,7 +9,7 @@ import {
 import { getFileMetadataFromDriveCache } from './db';
 import { getDriveFile } from './google-drive';
 import { GoogleAuthContext } from '@/types/auth';
-import { downloadDriveFile, batchCreateMediaItems, uploadBytes } from './google-photos';
+import { downloadDriveFile, batchCreateMediaItems, uploadBytes as photosUploadBytes } from './google-photos';
 import { recordUpload } from './uploads-db';
 import { clearFileSyncStatusCache } from './sync-status';
 import { createLogger } from './logger';
@@ -40,6 +40,19 @@ class UploadsManager {
 
   private constructor() {
     logger.info('UploadsManager singleton created');
+  }
+
+  // Wrapper around the photos uploadBytes function so instance methods can be
+  // spied/mocked in tests. Tests spy on the instance method `uploadBytes`.
+  private async uploadBytes(params: {
+    auth: GoogleAuthContext;
+    fileBuffer: Buffer;
+    fileName: string;
+    mimeType: string;
+    operationId?: string;
+    signal?: AbortSignal;
+  }): Promise<string> {
+    return photosUploadBytes(params);
   }
 
   /**
@@ -567,7 +580,7 @@ class UploadsManager {
                     fileName: item.fileName,
                   });
 
-                  const uploadToken = await uploadBytes({
+                  const uploadToken = await this.uploadBytes({
                     auth: auth,
                     fileBuffer: buffer,
                     fileName: item.fileName,
