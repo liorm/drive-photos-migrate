@@ -235,7 +235,10 @@ async function getParentFolderIds(
   // Import here to avoid circular dependency
   const { getFolderPath } = await import('./google-drive');
 
-  const folderPath = await getFolderPath(accessToken, folderId);
+  const folderPath = await getFolderPath({
+    auth: { accessToken },
+    folderId,
+  });
 
   // Remove the last item (current folder) and first item (root)
   // We want all folders in between

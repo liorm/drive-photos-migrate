@@ -658,7 +658,7 @@ class UploadsManager {
               const isAbort =
                 error &&
                 typeof error === 'object' &&
-                (error as any).name === 'AbortError';
+                (error as Record<string, unknown>).name === 'AbortError';
 
               if (isAbort) {
                 logger.info('Processing aborted during item download/upload', {

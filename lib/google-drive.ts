@@ -310,7 +310,6 @@ export async function getFolderPath({
   logger.debug('Getting folder path for breadcrumbs', { folderId });
 
   try {
-    const drive = getDriveClient(auth.accessToken);
     const path: Array<{ id: string; name: string }> = [];
 
     let currentId = folderId;

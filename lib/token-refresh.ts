@@ -59,18 +59,28 @@ export async function refreshAccessToken(
  * Detect if an error represents an authorization failure that warrants a token refresh attempt.
  */
 export function isAuthError(error: unknown): boolean {
-  if (!error) return false;
-  const anyErr = error as any;
-  const message = (anyErr.message || '').toString().toLowerCase();
+  if (!error || typeof error !== 'object') return false;
+  const err = error as Record<string, unknown>;
+  const message = (err.message as string | undefined)?.toLowerCase() || '';
   const statusCode =
-    anyErr.code ||
-    anyErr.status ||
-    anyErr.statusCode ||
-    anyErr?.details?.statusCode;
+    (err.code as number | undefined) ||
+    (err.status as number | undefined) ||
+    (err.statusCode as number | undefined) ||
+    ((err.details as Record<string, unknown> | undefined)?.statusCode as
+      | number
+      | undefined);
   if (statusCode === 401) return true;
   // Sometimes googleapis sets errors like err.errors[0].reason === 'authError'
-  if (Array.isArray(anyErr.errors)) {
-    if (anyErr.errors.some((e: any) => e?.reason === 'authError')) return true;
+  if (Array.isArray(err.errors)) {
+    if (
+      err.errors.some(
+        (e: unknown) =>
+          e &&
+          typeof e === 'object' &&
+          (e as Record<string, unknown>).reason === 'authError'
+      )
+    )
+      return true;
   }
   return (
     message.includes('unauthorized') || message.includes('invalid credentials')

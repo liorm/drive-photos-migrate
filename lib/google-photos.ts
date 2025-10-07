@@ -87,7 +87,7 @@ async function uploadBytes({
   fileBuffer,
   fileName,
   mimeType: _mimeType,
-  operationId,
+  operationId: _operationId,
   signal,
 }: UploadBytesParams): Promise<string> {
   logger.debug('Uploading bytes to Photos API', {
@@ -134,7 +134,7 @@ async function createMediaItemSingle({
   auth,
   uploadToken,
   fileName,
-  operationId,
+  operationId: _operationId,
 }: CreateMediaItemSingleParams): Promise<string> {
   logger.debug('Creating media item from upload token', { fileName });
 
@@ -201,7 +201,7 @@ interface BatchCreateMediaItemsParams {
 export async function batchCreateMediaItems({
   auth,
   items,
-  operationId,
+  operationId: _operationId,
 }: BatchCreateMediaItemsParams): Promise<
   Array<{
     success: boolean;

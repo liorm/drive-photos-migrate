@@ -93,17 +93,17 @@ AUTH_GOOGLE_SECRET=\<your-client-secret\>
 Additional tuning environment variables
 
 - `QUEUE_MAX_CONCURRENCY` (integer, default 10): Maximum number of concurrent
-   workers used to process a single user's upload queue. Lower this to reduce
-   parallel downloads/uploads and overall API usage.
+  workers used to process a single user's upload queue. Lower this to reduce
+  parallel downloads/uploads and overall API usage.
 - `PHOTOS_MEDIA_BATCH_SIZE` (integer, default 30, max 50): Number of media
-   items sent in a single `mediaItems:batchCreate` call when processing the
-   main upload queue. Keep this <= 50 (Google Photos API limit).
+  items sent in a single `mediaItems:batchCreate` call when processing the
+  main upload queue. Keep this <= 50 (Google Photos API limit).
 - `PHOTOS_UPLOAD_BATCH_SIZE` (integer, default 5, max 50): Number of media
-   items sent per `mediaItems:batchCreate` call when using the `batchUploadFiles`
-   helper (used by file upload flows). Keep this <= 50.
-   - `QUEUE_CONCURRENCY` (integer, default 5, max 10): Number of concurrent
-      workers used to process a single user's upload queue. Lower this to reduce
-      parallel downloads/uploads and overall API usage.
+  items sent per `mediaItems:batchCreate` call when using the `batchUploadFiles`
+  helper (used by file upload flows). Keep this <= 50.
+  - `QUEUE_CONCURRENCY` (integer, default 5, max 10): Number of concurrent
+    workers used to process a single user's upload queue. Lower this to reduce
+    parallel downloads/uploads and overall API usage.
 
 5. **Run the development server:**
    pnpm dev
