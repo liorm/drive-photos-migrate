@@ -11,6 +11,7 @@ import {
   Loader2,
   AlertCircle,
   Trash,
+  RotateCw,
 } from 'lucide-react';
 import { isAuthError, handleAuthError } from '@/lib/auth-error-handler';
 
@@ -20,6 +21,23 @@ interface QueueStats {
   uploading: number;
   completed: number;
   failed: number;
+}
+
+interface RateStats {
+  itemsPerSecond: number;
+  bytesPerSecond: number;
+  totalUploadedCount: number;
+  totalUploadedSize: number;
+  isTracking: boolean;
+}
+
+function formatBytes(bytes: number, decimals = 2) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
 export default function QueuePage() {
@@ -38,6 +56,8 @@ export default function QueuePage() {
   const [clearing, setClearing] = useState(false);
   const [clearingAll, setClearingAll] = useState(false);
   const [showClearAllDialog, setShowClearAllDialog] = useState(false);
+  const [requeuing, setRequeuing] = useState(false);
+  const [rateStats, setRateStats] = useState<RateStats | null>(null);
 
   // Fetch queue from API
   const fetchQueue = useCallback(async () => {
@@ -94,6 +114,28 @@ export default function QueuePage() {
       return () => clearInterval(interval);
     }
   }, [stats.uploading, fetchQueue]);
+
+  // Fetch rate stats every 2 seconds when items are uploading
+  useEffect(() => {
+    if (stats.uploading > 0) {
+      const interval = setInterval(async () => {
+        try {
+          const response = await fetch('/api/queue/stats');
+          if (response.ok) {
+            const data = await response.json();
+            setRateStats(data.stats);
+          }
+        } catch (err) {
+          console.error('Error fetching rate stats:', err);
+        }
+      }, 2000);
+
+      return () => clearInterval(interval);
+    } else {
+      // Clear stats when not uploading
+      setRateStats(null);
+    }
+  }, [stats.uploading]);
 
   // Start processing queue
   const handleProcess = async () => {
@@ -232,6 +274,40 @@ export default function QueuePage() {
     }
   };
 
+  // Re-queue failed items
+  const handleRequeueFailed = async () => {
+    if (stats.failed === 0) return;
+
+    try {
+      setRequeuing(true);
+      setError(null);
+
+      const response = await fetch('/api/queue/requeue-failed', {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.error || 'Failed to re-queue items';
+
+        if (response.status === 401 && isAuthError(errorMessage)) {
+          await handleAuthError();
+          return;
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      // Refresh queue after re-queuing
+      await fetchQueue();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      console.error('Error re-queuing failed items:', err);
+    } finally {
+      setRequeuing(false);
+    }
+  };
+
   // Remove individual item
   const handleRemove = async (id: string) => {
     try {
@@ -302,6 +378,26 @@ export default function QueuePage() {
         </div>
       </div>
 
+      {/* Rate Stats Card */}
+      {rateStats && rateStats.isTracking && (
+        <div className="rounded-lg bg-white p-4 shadow-md">
+          <p className="text-xs font-medium text-gray-500">Upload Rate</p>
+          <div className="mt-1 flex items-baseline gap-4">
+            <div>
+              <span className="text-2xl font-bold text-gray-900">
+                {rateStats.itemsPerSecond.toFixed(2)}
+              </span>
+              <span className="ml-1 text-sm text-gray-600">items/s</span>
+            </div>
+            <div>
+              <span className="text-2xl font-bold text-gray-900">
+                {formatBytes(rateStats.bytesPerSecond)}/s
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Controls */}
       <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <div className="flex items-center gap-3">
@@ -355,6 +451,24 @@ export default function QueuePage() {
               <>
                 <Trash2 className="h-4 w-4" />
                 Clear Completed/Failed
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={handleRequeueFailed}
+            disabled={stats.failed === 0 || requeuing}
+            className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {requeuing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Re-queuing...
+              </>
+            ) : (
+              <>
+                <RotateCw className="h-4 w-4" />
+                Re-queue Failed ({stats.failed})
               </>
             )}
           </button>

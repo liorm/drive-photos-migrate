@@ -7,7 +7,6 @@ import {
   clearFileSyncStatusCache,
 } from '@/lib/sync-status';
 import { getDriveFile } from '@/lib/google-drive';
-import { GoogleAuthContext } from '@/types/auth';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
 import { clearFolderFromCache } from '@/lib/db';

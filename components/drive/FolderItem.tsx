@@ -1,7 +1,13 @@
 'use client';
 
 import { DriveFolder } from '@/types/google-drive';
-import { Folder, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  Folder,
+  ChevronRight,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
+} from 'lucide-react';
 
 interface FolderItemProps {
   folder: DriveFolder;
@@ -59,7 +65,19 @@ export function FolderItem({ folder, onNavigate }: FolderItemProps) {
             className="flex-1 truncate text-sm font-medium text-gray-900"
             title={folder.name}
           >
-            {folder.name}
+            <span className="flex items-center gap-2">
+              {folder.name}
+              <a
+                href={`https://drive.google.com/drive/folders/${folder.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="opacity-0 transition-opacity group-hover:opacity-100"
+                onClick={e => e.stopPropagation()}
+                title="Open in Google Drive"
+              >
+                <ExternalLink className="h-4 w-4 text-gray-500 hover:text-blue-600" />
+              </a>
+            </span>
           </h3>
           <ChevronRight className="h-4 w-4 flex-shrink-0 text-gray-400 transition-transform group-hover:translate-x-1 group-hover:text-blue-600" />
         </div>

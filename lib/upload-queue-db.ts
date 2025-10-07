@@ -555,3 +555,31 @@ export async function failUploadingItems(
 
   return count;
 }
+
+/**
+ * Re-queue all failed items for a user.
+ * Returns the number of items re-queued.
+ */
+export async function requeueFailedItems(userEmail: string): Promise<number> {
+  logger.info('Re-queuing failed items', { userEmail });
+
+  const db = getDatabase();
+
+  const result = db
+    .prepare(
+      `UPDATE queue_items
+       SET status = 'pending', started_at = NULL, completed_at = NULL, error = NULL
+       WHERE user_email = ? AND status = 'failed'`
+    )
+    .run(userEmail);
+
+  const requeuedCount = result.changes || 0;
+
+  if (requeuedCount > 0) {
+    logger.info('Re-queued failed items', { userEmail, requeuedCount });
+  } else {
+    logger.debug('No failed items to re-queue', { userEmail });
+  }
+
+  return requeuedCount;
+}

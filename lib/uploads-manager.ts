@@ -17,6 +17,7 @@ import operationStatusManager, { OperationType } from './operation-status';
 import { retryWithBackoff } from './retry';
 import backoffController from './backoff-controller';
 import { QueueItem } from '@/types/upload-queue';
+import { UploadRateTracker } from './upload-rate-tracker';
 
 const logger = createLogger('uploads-manager');
 
@@ -30,6 +31,9 @@ class UploadsManager {
 
   // Per-user AbortControllers for in-flight work so we can cancel downloads/uploads
   private activeControllers = new Map<string, AbortController>();
+
+  // Per-user rate trackers
+  private rateTrackers = new Map<string, UploadRateTracker>();
 
   private static instance: UploadsManager | undefined;
   private initialized = false;
@@ -269,6 +273,13 @@ class UploadsManager {
     // Mark as processing
     this.activeProcessing.add(userEmail);
 
+    // Get or create a rate tracker for the user and reset it
+    if (!this.rateTrackers.has(userEmail)) {
+      this.rateTrackers.set(userEmail, new UploadRateTracker());
+    }
+    const rateTracker = this.rateTrackers.get(userEmail)!;
+    rateTracker.reset();
+
     try {
       logger.info('Starting queue processing', { userEmail });
 
@@ -401,6 +412,11 @@ class UploadsManager {
                 completedAt: new Date().toISOString(),
                 photosMediaItemId: result.mediaItemId,
               });
+
+              // Record the upload for rate tracking
+              if (queueItem.fileSize) {
+                rateTracker.addUpload(queueItem.fileSize);
+              }
 
               successCount++;
 
@@ -733,11 +749,28 @@ class UploadsManager {
   }
 
   /**
+   * Get upload stats for a user
+   */
+  getUploadStats(userEmail: string) {
+    const tracker = this.rateTrackers.get(userEmail);
+    if (tracker) {
+      return tracker.getStats();
+    }
+    return null;
+  }
+
+  /**
    * Request that processing for a user be stopped
    * Consolidates logic from queue-processor.ts and DELETE /api/queue/process
    */
   stopProcessing(userEmail: string): void {
     logger.info('Stop processing requested', { userEmail });
+
+    // Reset the rate tracker for the user
+    const tracker = this.rateTrackers.get(userEmail);
+    if (tracker) {
+      tracker.reset();
+    }
 
     // If there's no active processing for this user, reset any stuck uploading items
     // so future processing attempts are not blocked by leftover 'uploading' states.
