@@ -208,12 +208,26 @@ export async function fetchWithRetry(
 
     // If response is not ok, throw an error with status code
     if (!response.ok) {
+      // Try to read response body for more detailed error info (best-effort)
+      let responseBody = '';
+      try {
+        responseBody = await response.text();
+      } catch (e) {
+        // ignore read errors
+      }
+
+      const truncatedBody =
+        typeof responseBody === 'string' && responseBody.length > 2000
+          ? responseBody.slice(0, 2000) + '... (truncated)'
+          : responseBody;
+
       const error = new ExtendedError({
         message: `HTTP ${response.status}: ${response.statusText}`,
         details: {
           statusCode: response.status,
           url,
           method: init?.method || 'GET',
+          responseBody: truncatedBody,
         },
       });
       throw error;

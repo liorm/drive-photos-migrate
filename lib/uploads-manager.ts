@@ -9,7 +9,7 @@ import {
 import { getFileMetadataFromDriveCache } from './db';
 import { getDriveFile } from './google-drive';
 import { GoogleAuthContext } from '@/types/auth';
-import { downloadDriveFile, batchCreateMediaItems } from './google-photos';
+import { downloadDriveFile, batchCreateMediaItems, uploadBytes } from './google-photos';
 import { recordUpload } from './uploads-db';
 import { clearFileSyncStatusCache } from './sync-status';
 import { createLogger } from './logger';
@@ -567,7 +567,7 @@ class UploadsManager {
                     fileName: item.fileName,
                   });
 
-                  const uploadToken = await this.uploadBytes({
+                  const uploadToken = await uploadBytes({
                     auth: auth,
                     fileBuffer: buffer,
                     fileName: item.fileName,
@@ -832,77 +832,6 @@ class UploadsManager {
         error: err instanceof Error ? err.message : String(err),
       });
     }
-  }
-
-  /**
-   * Upload file bytes to Photos API and get upload token
-   * Helper method extracted from google-photos.ts
-   */
-  private async uploadBytes({
-    auth,
-    fileBuffer,
-    fileName,
-    mimeType: _mimeType,
-    operationId,
-    signal,
-  }: {
-    auth: GoogleAuthContext;
-    fileBuffer: Buffer;
-    fileName: string;
-    mimeType: string;
-    operationId?: string;
-    signal?: AbortSignal;
-  }): Promise<string> {
-    logger.debug('Uploading bytes to Photos API', {
-      fileName,
-      size: fileBuffer.length,
-    });
-
-    const { fetchWithRetry } = await import('./retry');
-
-    const response = await fetchWithRetry(
-      'https://photoslibrary.googleapis.com/v1/uploads',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${auth.accessToken}`,
-          'Content-Type': 'application/octet-stream',
-          'X-Goog-Upload-File-Name': encodeURIComponent(fileName),
-          'X-Goog-Upload-Protocol': 'raw',
-        },
-        body: fileBuffer as unknown as BodyInit,
-        signal,
-      },
-      {
-        maxRetries: 3,
-        onRetry: (error, attempt, delay) => {
-          logger.warn('Retrying upload bytes', {
-            fileName,
-            attempt,
-            delay,
-            error: error.message,
-          });
-
-          if (operationId) {
-            operationStatusManager.retryOperation(
-              operationId,
-              `Upload failed: ${error.message}`,
-              attempt,
-              3
-            );
-          }
-        },
-      }
-    );
-
-    const uploadToken = await response.text();
-
-    logger.debug('Upload token received', {
-      fileName,
-      tokenLength: uploadToken.length,
-    });
-
-    return uploadToken;
   }
 }
 

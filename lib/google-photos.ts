@@ -20,57 +20,6 @@ const logger = createLogger('google-photos');
 const PHOTOS_API_BASE = 'https://photoslibrary.googleapis.com/v1';
 
 /**
- * Upload a file to Google Photos (3-step process)
- * 1. Get upload token from Photos API
- * 2. Upload file bytes
- * 3. Create media item from upload token
- */
-interface UploadFileToPhotosParams {
-  auth: GoogleAuthContext;
-  fileBuffer: Buffer;
-  fileName: string;
-  mimeType: string;
-  operationId?: string;
-  signal?: AbortSignal;
-}
-
-export async function uploadFileToPhotos({
-  auth,
-  fileBuffer,
-  fileName,
-  mimeType,
-  operationId,
-  signal,
-}: UploadFileToPhotosParams): Promise<string> {
-  logger.info('Starting file upload to Photos', { fileName, mimeType });
-
-  // Step 1: Upload bytes to get upload token
-  const uploadToken = await uploadBytes({
-    auth,
-    fileBuffer,
-    fileName,
-    mimeType,
-    operationId,
-    signal,
-  });
-
-  // Step 2: Create media item from upload token
-  const mediaItemId = await createMediaItemSingle({
-    auth,
-    uploadToken,
-    fileName,
-    operationId,
-  });
-
-  logger.info('File uploaded successfully to Photos', {
-    fileName,
-    mediaItemId,
-  });
-
-  return mediaItemId;
-}
-
-/**
  * Step 1: Upload file bytes to Photos API and get upload token
  */
 interface UploadBytesParams {
@@ -82,12 +31,12 @@ interface UploadBytesParams {
   signal?: AbortSignal;
 }
 
-async function uploadBytes({
+export async function uploadBytes({
   auth,
   fileBuffer,
   fileName,
   mimeType: _mimeType,
-  operationId: _operationId,
+  operationId,
   signal,
 }: UploadBytesParams): Promise<string> {
   logger.debug('Uploading bytes to Photos API', {
@@ -95,8 +44,11 @@ async function uploadBytes({
     size: fileBuffer.length,
   });
 
-  const { result: response } = await withGoogleAuthRetry(auth, async auth => {
-    const res = await fetchWithRetry(`${PHOTOS_API_BASE}/uploads`, {
+  const { fetchWithRetry } = await import('./retry');
+
+  const response = await fetchWithRetry(
+    `${PHOTOS_API_BASE}/uploads`,
+    {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${auth.accessToken}`,
@@ -106,9 +58,28 @@ async function uploadBytes({
       },
       body: fileBuffer as unknown as BodyInit,
       signal,
-    });
-    return res;
-  });
+    },
+    {
+      maxRetries: 3,
+      onRetry: (error, attempt, delay) => {
+        logger.warn('Retrying upload bytes', {
+          fileName,
+          attempt,
+          delay,
+          error: error.message,
+        });
+
+        if (operationId) {
+          operationStatusManager.retryOperation(
+            operationId,
+            `Upload failed: ${error.message}`,
+            attempt,
+            3
+          );
+        }
+      },
+    }
+  );
 
   const uploadToken = await response.text();
 
@@ -118,75 +89,6 @@ async function uploadBytes({
   });
 
   return uploadToken;
-}
-
-/**
- * Step 2: Create media item from upload token (single item)
- */
-interface CreateMediaItemSingleParams {
-  auth: GoogleAuthContext;
-  uploadToken: string;
-  fileName: string;
-  operationId?: string;
-}
-
-async function createMediaItemSingle({
-  auth,
-  uploadToken,
-  fileName,
-  operationId: _operationId,
-}: CreateMediaItemSingleParams): Promise<string> {
-  logger.debug('Creating media item from upload token', { fileName });
-
-  const requestBody: CreateMediaItemRequest = {
-    newMediaItems: [
-      {
-        simpleMediaItem: {
-          uploadToken,
-          fileName,
-        },
-      },
-    ],
-  };
-
-  const { result: response } = await withGoogleAuthRetry(auth, async auth => {
-    const res = await fetchWithRetry(
-      `${PHOTOS_API_BASE}/mediaItems:batchCreate`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${auth.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      }
-    );
-    return res;
-  });
-
-  const result: CreateMediaItemResponse = await response.json();
-
-  // Check if creation was successful
-  const mediaItemResult = result.newMediaItemResults[0];
-  if (!mediaItemResult.mediaItem) {
-    const errorMsg =
-      mediaItemResult.status.message || 'Unknown error creating media item';
-    throw new ExtendedError({
-      message: 'Media item creation failed',
-      details: {
-        fileName,
-        statusCode: mediaItemResult.status.code,
-        statusMessage: errorMsg,
-      },
-    });
-  }
-
-  logger.debug('Media item created successfully', {
-    fileName,
-    mediaItemId: mediaItemResult.mediaItem.id,
-  });
-
-  return mediaItemResult.mediaItem.id;
 }
 
 /**
