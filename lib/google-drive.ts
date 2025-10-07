@@ -4,6 +4,7 @@ import {
   DriveFile,
   DriveFolder,
   SUPPORTED_MIME_TYPES,
+  BreadcrumbItem,
 } from '@/types/google-drive';
 import { getFolderDetailsFromCache } from '@/lib/db';
 import { createLogger } from '@/lib/logger';
@@ -301,7 +302,7 @@ export async function getFolderPath({
   folderId,
   userEmail,
   operationId,
-}: GetFolderPathParams) {
+}: GetFolderPathParams): Promise<BreadcrumbItem[]> {
   if (folderId === 'root') {
     return [{ id: 'root', name: 'My Drive' }];
   }
