@@ -46,6 +46,7 @@ export interface Operation {
 
 export interface OperationUpdate {
   status?: OperationStatus;
+  description?: string;
   progress?: Partial<OperationProgress>;
   error?: Partial<OperationError>;
   completedAt?: Date;
@@ -113,6 +114,11 @@ class OperationStatusManager extends EventEmitter {
     // Update status
     if (update.status) {
       operation.status = update.status;
+    }
+
+    // Update description
+    if (update.description) {
+      operation.description = update.description;
     }
 
     // Update progress

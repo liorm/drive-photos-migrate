@@ -6,10 +6,13 @@ import {
   getCachedFolderCount as getFolderCount,
 } from './db';
 import { CachedPageResponse } from '@/types/drive-cache';
-import { listAllDriveFiles } from './google-drive';
+import { getFolderPath, listAllDriveFiles } from './google-drive';
 import { GoogleAuthContext } from '@/types/auth';
 import { createLogger } from '@/lib/logger';
-import { trackOperation, OperationType } from '@/lib/operation-status';
+import operationStatusManager, {
+  OperationType,
+  trackOperation,
+} from '@/lib/operation-status';
 
 const logger = createLogger('drive-cache');
 
@@ -82,6 +85,22 @@ export async function syncFolderToCache(
     'Syncing folder from Drive',
     async operationId => {
       logger.info('Starting folder sync to cache', { userEmail, folderId });
+
+      // Don't wait for this, let it update the description in the background
+      getFolderPath({ auth, folderId, operationId })
+        .then(breadcrumbs => {
+          const breadcrumbString = breadcrumbs.map(b => b.name).join(' / ');
+          operationStatusManager.updateOperation(operationId, {
+            description: `Syncing folder: ${breadcrumbString}`,
+          });
+        })
+        .catch(err => {
+          logger.warn('Failed to get breadcrumbs for operation description', {
+            operationId,
+            error: err,
+          });
+        });
+
       const startTime = Date.now();
 
       // Fetch ALL files from Drive API (this logs progress internally)

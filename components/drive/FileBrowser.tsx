@@ -15,8 +15,8 @@ import {
   ListPlus,
 } from 'lucide-react';
 import { isAuthError, handleAuthError } from '@/lib/auth-error-handler';
-import { EnqueueAllManager } from '@/lib/enqueue-all-manager';
-import operationStatusManager, { OperationType } from '@/lib/operation-status';
+
+import { useOperationNotifications } from '@/components/OperationNotificationsContext';
 
 interface FileBrowserProps {
   initialFolderId?: string;
@@ -32,10 +32,13 @@ interface ApiResponse {
   queuedFileIds: string[];
 }
 
+import { OperationType } from '@/lib/operation-status';
+
 export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const { operations } = useOperationNotifications();
 
   // Use URL as source of truth for current folder
   const currentFolderId = searchParams.get('folder') || initialFolderId;
@@ -53,6 +56,19 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
   const [totalCount, setTotalCount] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [isFolderBeingEnqueued, setIsFolderBeingEnqueued] = useState(false);
+
+  useEffect(() => {
+    const enqueueOps = operations.filter(
+      op => op.type === OperationType.LONG_WRITE
+    );
+    const isRunning = enqueueOps.some(
+      op =>
+        op.metadata?.rootFolderId === currentFolderId &&
+        (op.status === 'pending' || op.status === 'in_progress')
+    );
+    setIsFolderBeingEnqueued(isRunning);
+  }, [currentFolderId, operations]);
 
   // Fetch files from API
   const fetchFiles = useCallback(
@@ -262,21 +278,22 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
 
   // Add all files from current folder to upload queue
   const handleEnqueueAll = async () => {
-    setUploading(true);
     const currentFolderName =
       folderPath[folderPath.length - 1]?.name || 'current folder';
+
     try {
-      const operationId = operationStatusManager.createOperation(
-        OperationType.LONG_WRITE,
-        'Enqueue All',
-        {
-          description: `Enqueue all files from "${currentFolderName}"`,
-        }
-      );
+      await fetch('/api/enqueue-all', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          folderId: currentFolderId,
+          folderName: currentFolderName,
+        }),
+      });
 
-      // Not awaiting this as it runs in the background
-      EnqueueAllManager.getInstance().enqueueAll(currentFolderId, operationId);
-
+      // Optional: give immediate feedback, though the operation notification will appear.
       setUploadProgress(
         `Started enqueueing all files from "${currentFolderName}"...`
       );
@@ -288,10 +305,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
         }`
       );
       console.error('Error starting enqueue all files:', err);
-      // Clear error after 5 seconds
       setTimeout(() => setUploadProgress(null), 5000);
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -364,7 +378,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
             </button>
             <button
               onClick={handleEnqueueAll}
-              disabled={uploading}
+              disabled={uploading || isFolderBeingEnqueued}
               className="flex items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <ListPlus className="h-4 w-4" />
