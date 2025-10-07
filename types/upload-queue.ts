@@ -22,6 +22,7 @@ export interface QueueItem {
   completedAt?: string; // ISO timestamp
   error?: string; // Error message if failed
   photosMediaItemId?: string; // Set after successful upload
+  folderPath?: Array<{ id: string; name: string }>; // Breadcrumb path to file's parent folder
 }
 
 /**

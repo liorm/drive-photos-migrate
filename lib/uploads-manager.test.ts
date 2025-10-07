@@ -72,8 +72,10 @@ const operationStatus = (await import('./operation-status')).default;
 const userEmail = 'test@example.com';
 const auth: GoogleAuthContext = {
   accessToken: 'test-access-token',
-  accessTokenExpires: Date.now() + 3600 * 1000,
   refreshToken: 'test-refresh-token',
+  async refresh() {
+    // Mock refresh implementation
+  },
 };
 
 describe('UploadsManager', () => {
@@ -97,9 +99,12 @@ describe('UploadsManager', () => {
       vi.mocked(uploadQueueDb.addToQueue).mockResolvedValue({
         added: [
           {
+            id: 'queue-123',
             driveFileId: 'file1',
             fileName: 'test.jpg',
             mimeType: 'image/jpeg',
+            status: 'pending',
+            addedAt: new Date().toISOString(),
           },
         ],
         skipped: [],
@@ -136,9 +141,12 @@ describe('UploadsManager', () => {
       vi.mocked(uploadQueueDb.addToQueue).mockResolvedValue({
         added: [
           {
+            id: 'queue-456',
             driveFileId: 'file2',
             fileName: 'cached.jpg',
             mimeType: 'image/jpeg',
+            status: 'pending',
+            addedAt: new Date().toISOString(),
           },
         ],
         skipped: [],
@@ -189,14 +197,13 @@ describe('UploadsManager', () => {
   describe('startProcessing', () => {
     it('should process a single pending item successfully', async () => {
       const pendingItem: QueueItem = {
-        id: 1,
-        userEmail,
+        id: 'queue-1',
         driveFileId: 'file1',
         fileName: 'test.jpg',
         mimeType: 'image/jpeg',
         status: 'pending',
         fileSize: 1024,
-        createdAt: '',
+        addedAt: new Date().toISOString(),
       };
       vi.mocked(uploadQueueDb.getQueueByStatus).mockResolvedValue([pendingItem]);
       vi.mocked(googlePhotos.downloadDriveFile).mockResolvedValue(
@@ -208,7 +215,7 @@ describe('UploadsManager', () => {
         .mockResolvedValue('upload-token-123');
 
       vi.mocked(googlePhotos.batchCreateMediaItems).mockResolvedValue([
-        { success: true, mediaItemId: 'photo-123' },
+        { success: true, mediaItemId: 'photo-123', fileName: 'test.jpg' },
       ]);
 
       await uploadsManager.startProcessing(userEmail, auth);
@@ -234,7 +241,7 @@ describe('UploadsManager', () => {
       );
       expect(uploadQueueDb.updateQueueItem).toHaveBeenCalledWith(
         userEmail,
-        1,
+        'queue-1',
         expect.objectContaining({ status: 'completed' })
       );
       expect(operationStatus.completeOperation).toHaveBeenCalled();
@@ -242,14 +249,13 @@ describe('UploadsManager', () => {
 
     it('should handle processing failure for an item', async () => {
       const pendingItem: QueueItem = {
-        id: 1,
-        userEmail,
+        id: 'queue-2',
         driveFileId: 'file1',
         fileName: 'test.jpg',
         mimeType: 'image/jpeg',
         status: 'pending',
         fileSize: 1024,
-        createdAt: '',
+        addedAt: new Date().toISOString(),
       };
       vi.mocked(uploadQueueDb.getQueueByStatus).mockResolvedValue([pendingItem]);
       vi.mocked(googlePhotos.downloadDriveFile).mockRejectedValue(
@@ -260,7 +266,7 @@ describe('UploadsManager', () => {
 
       expect(uploadQueueDb.updateQueueItem).toHaveBeenCalledWith(
         userEmail,
-        1,
+        'queue-2',
         expect.objectContaining({
           status: 'failed',
           error: 'Download failed',

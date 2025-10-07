@@ -389,6 +389,60 @@ export function getFileMetadataFromDriveCache(
 }
 
 /**
+ * Get file details from Drive cache by file ID including parent information
+ */
+export function getFileDetailsFromCache(
+  userEmail: string,
+  fileId: string
+): {
+  fileName: string;
+  mimeType: string;
+  fileSize?: number;
+  parents?: string[];
+} | null {
+  const db = getDatabase();
+
+  // Find the file in cached_files across all folders for this user
+  const fileRow = db
+    .prepare(
+      `SELECT cf.name, cf.mime_type, cf.size, cf.parents
+       FROM cached_files cf
+       JOIN cached_folders cfolder ON cf.cached_folder_id = cfolder.id
+       WHERE cfolder.user_email = ? AND cf.file_id = ?
+       LIMIT 1`
+    )
+    .get(userEmail, fileId) as
+    | {
+        name: string;
+        mime_type: string;
+        size: string | null;
+        parents: string | null;
+      }
+    | undefined;
+
+  if (!fileRow) {
+    logger.debug('File details not found in Drive cache', {
+      userEmail,
+      fileId,
+    });
+    return null;
+  }
+
+  logger.debug('Retrieved file details from Drive cache', {
+    userEmail,
+    fileId,
+    fileName: fileRow.name,
+  });
+
+  return {
+    fileName: fileRow.name,
+    mimeType: fileRow.mime_type,
+    fileSize: fileRow.size ? parseInt(fileRow.size) : undefined,
+    parents: fileRow.parents ? JSON.parse(fileRow.parents) : undefined,
+  };
+}
+
+/**
  * Get folder metadata from Drive cache by folder ID
  */
 export function getFolderDetailsFromCache(

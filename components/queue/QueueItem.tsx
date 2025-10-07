@@ -8,14 +8,37 @@ import {
   Loader2,
   Clock,
   Trash2,
+  FolderOpen,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 
 interface QueueItemProps {
   item: QueueItemType;
   onRemove: (id: string) => void;
 }
 
+interface FolderPath {
+  id: string;
+  name: string;
+}
+
+interface EnrichResponse {
+  success: boolean;
+  folderPath: FolderPath[] | null;
+  error?: string;
+}
+
+// Simple in-memory cache for folder paths to avoid duplicate API calls
+const folderPathCache = new Map<string, FolderPath[] | null>();
+
 export function QueueItem({ item, onRemove }: QueueItemProps) {
+  const router = useRouter();
+  const [folderPath, setFolderPath] = useState<FolderPath[] | null>(
+    item.folderPath || null
+  );
+  const [isLoadingPath, setIsLoadingPath] = useState(false);
+  const [pathError, setPathError] = useState<string | null>(null);
   const getStatusIcon = () => {
     switch (item.status) {
       case 'pending':
@@ -67,6 +90,100 @@ export function QueueItem({ item, onRemove }: QueueItemProps) {
     return date.toLocaleString();
   };
 
+  // Fetch folder path on component mount if not already available
+  useEffect(() => {
+    const shouldFetchPath = !folderPath && !isLoadingPath && !pathError;
+    
+    if (shouldFetchPath) {
+      // Add a small delay to batch requests and avoid overwhelming the API
+      const timeoutId = setTimeout(() => {
+        fetchFolderPath();
+      }, Math.random() * 500); // Random delay between 0-500ms to spread requests
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [folderPath, isLoadingPath, pathError]); // Dependencies to control when to fetch
+
+  const fetchFolderPath = async () => {
+    if (isLoadingPath) return;
+    
+    // Check cache first
+    const cacheKey = item.id;
+    if (folderPathCache.has(cacheKey)) {
+      const cachedPath = folderPathCache.get(cacheKey);
+      setFolderPath(cachedPath || null);
+      return;
+    }
+    
+    setIsLoadingPath(true);
+    setPathError(null);
+
+    try {
+      const response = await fetch(`/api/queue/${item.id}/enrich`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch folder path: ${response.status}`);
+      }
+
+      const data: EnrichResponse = await response.json();
+      
+      if (data.success) {
+        // Cache the result
+        folderPathCache.set(cacheKey, data.folderPath);
+        setFolderPath(data.folderPath);
+      } else {
+        setPathError(data.error || 'Failed to load folder path');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setPathError(errorMessage);
+      console.warn('Failed to fetch folder path for queue item:', errorMessage);
+    } finally {
+      setIsLoadingPath(false);
+    }
+  };
+
+  const handleNavigateToFolder = () => {
+    if (folderPath && folderPath.length > 0) {
+      // Navigate to the file's parent folder in the drive browser
+      const parentFolder = folderPath[folderPath.length - 1];
+      router.push(`/drive?folder=${parentFolder.id}`);
+    }
+  };
+
+  const renderFolderPath = () => {
+    if (isLoadingPath) {
+      return (
+        <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          <span>Loading path...</span>
+        </div>
+      );
+    }
+
+    if (pathError) {
+      return (
+        <div className="mt-1 flex items-center gap-2 text-xs text-gray-400">
+          <FolderOpen className="h-3 w-3" />
+          <span className="truncate">Path unavailable</span>
+        </div>
+      );
+    }
+
+    if (!folderPath || folderPath.length === 0) {
+      return null;
+    }
+
+    const pathString = folderPath.map(folder => folder.name).join(' / ');
+    
+    return (
+      <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+        <FolderOpen className="h-3 w-3" />
+        <span className="truncate">{pathString}</span>
+      </div>
+    );
+  };
+
   return (
     <div
       className={`flex items-center justify-between rounded-lg border p-4 transition-all ${getStatusColor()}`}
@@ -100,22 +217,37 @@ export function QueueItem({ item, onRemove }: QueueItemProps) {
               </>
             )}
           </div>
+          {renderFolderPath()}
           {item.error && (
             <p className="mt-1 text-xs text-red-600">{item.error}</p>
           )}
         </div>
       </div>
 
-      {/* Remove Button (only for pending and failed items) */}
-      {(item.status === 'pending' || item.status === 'failed') && (
-        <button
-          onClick={() => onRemove(item.id)}
-          className="ml-4 flex-shrink-0 rounded-md p-2 text-gray-400 transition-colors hover:bg-white hover:text-red-600"
-          title="Remove from queue"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      )}
+      {/* Action Buttons */}
+      <div className="ml-4 flex flex-shrink-0 items-center gap-2">
+        {/* Navigate to Folder Button */}
+        {folderPath && folderPath.length > 0 && (
+          <button
+            onClick={handleNavigateToFolder}
+            className="rounded-md p-2 text-gray-400 transition-colors hover:bg-white hover:text-blue-600"
+            title="Navigate to folder"
+          >
+            <FolderOpen className="h-4 w-4" />
+          </button>
+        )}
+        
+        {/* Remove Button (only for pending and failed items) */}
+        {(item.status === 'pending' || item.status === 'failed') && (
+          <button
+            onClick={() => onRemove(item.id)}
+            className="rounded-md p-2 text-gray-400 transition-colors hover:bg-white hover:text-red-600"
+            title="Remove from queue"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
