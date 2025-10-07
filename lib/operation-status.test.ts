@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import operationStatusManager, {
   OperationType,
   OperationStatus,
-  Operation,
 } from './operation-status';
 
 describe('OperationStatusManager', () => {
@@ -84,12 +83,7 @@ describe('OperationStatusManager', () => {
       OperationType.LONG_WRITE,
       'Test Retry'
     );
-    operationStatusManager.retryOperation(
-      operationId,
-      'Network Error',
-      1,
-      3
-    );
+    operationStatusManager.retryOperation(operationId, 'Network Error', 1, 3);
     const operation = operationStatusManager.getOperation(operationId);
     expect(operation?.status).toBe(OperationStatus.RETRYING);
     expect(operation?.error?.message).toBe('Network Error');
@@ -176,9 +170,18 @@ describe('OperationStatusManager', () => {
   });
 
   it('should clear all completed and failed operations', () => {
-    const op1 = operationStatusManager.createOperation(OperationType.SHORT_READ, 'Op 1');
-    const op2 = operationStatusManager.createOperation(OperationType.SHORT_READ, 'Op 2');
-    const op3 = operationStatusManager.createOperation(OperationType.SHORT_READ, 'Op 3');
+    const op1 = operationStatusManager.createOperation(
+      OperationType.SHORT_READ,
+      'Op 1'
+    );
+    const op2 = operationStatusManager.createOperation(
+      OperationType.SHORT_READ,
+      'Op 2'
+    );
+    const op3 = operationStatusManager.createOperation(
+      OperationType.SHORT_READ,
+      'Op 3'
+    );
 
     operationStatusManager.completeOperation(op1);
     operationStatusManager.failOperation(op2, 'Failed');

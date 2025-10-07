@@ -13,6 +13,8 @@ import {
   AlertCircle,
   RefreshCw,
   ListPlus,
+  EyeOff,
+  Eye,
 } from 'lucide-react';
 import { isAuthError, handleAuthError } from '@/lib/auth-error-handler';
 
@@ -57,6 +59,15 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [isFolderBeingEnqueued, setIsFolderBeingEnqueued] = useState(false);
+  const [hideSynced, setHideSynced] = useState(false);
+
+  // Load hide synced preference from localStorage on mount
+  useEffect(() => {
+    const savedPreference = localStorage.getItem('hideSyncedFiles');
+    if (savedPreference !== null) {
+      setHideSynced(savedPreference === 'true');
+    }
+  }, []);
 
   useEffect(() => {
     const enqueueOps = operations.filter(
@@ -198,9 +209,9 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
     });
   };
 
-  // Select all files
+  // Select all visible files
   const handleSelectAll = () => {
-    setSelectedFiles(new Set(files.map(f => f.id)));
+    setSelectedFiles(new Set(filteredFiles.map(f => f.id)));
   };
 
   // Deselect all
@@ -309,8 +320,17 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
     }
   };
 
+  // Filter out synced items if hideSynced is enabled
+  const filteredFolders = hideSynced
+    ? folders.filter(folder => folder.syncStatus?.status !== 'synced')
+    : folders;
+
+  const filteredFiles = hideSynced
+    ? files.filter(file => file.syncStatus !== 'synced')
+    : files;
+
   // Combine folders and files for display
-  const items = [...folders, ...files];
+  const items = [...filteredFolders, ...filteredFiles];
 
   return (
     <div className="space-y-4">
@@ -341,10 +361,15 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
         <div className="flex items-center gap-4">
           <div className="text-sm text-gray-700">
             <span className="font-semibold">{selectedFiles.size}</span> of{' '}
-            <span className="font-semibold">{files.length}</span> files selected
+            <span className="font-semibold">{filteredFiles.length}</span> files
+            selected
             {totalCount > 0 && (
               <span className="ml-2 text-gray-500">
-                ({files.length} of {totalCount - folders.length} loaded)
+                ({filteredFiles.length} of {files.length} shown
+                {hideSynced &&
+                  files.length > filteredFiles.length &&
+                  `, ${files.length - filteredFiles.length} synced hidden`}
+                )
               </span>
             )}
           </div>
@@ -362,7 +387,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
             </button>
             <button
               onClick={handleSelectAll}
-              disabled={files.length === 0}
+              disabled={filteredFiles.length === 0}
               className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CheckSquare className="h-4 w-4" />
@@ -383,6 +408,48 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
             >
               <ListPlus className="h-4 w-4" />
               Enqueue All
+            </button>
+            <button
+              onClick={() => {
+                const newHideSynced = !hideSynced;
+                setHideSynced(newHideSynced);
+
+                // Save preference to localStorage
+                localStorage.setItem(
+                  'hideSyncedFiles',
+                  newHideSynced.toString()
+                );
+
+                // Clear selection of synced files when hiding them
+                if (newHideSynced) {
+                  setSelectedFiles(prev => {
+                    const newSelection = new Set(prev);
+                    files.forEach(file => {
+                      if (file.syncStatus === 'synced') {
+                        newSelection.delete(file.id);
+                      }
+                    });
+                    return newSelection;
+                  });
+                }
+              }}
+              className={`flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                hideSynced
+                  ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
+                  : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {hideSynced ? (
+                <>
+                  <EyeOff className="h-4 w-4" />
+                  Show Synced
+                </>
+              ) : (
+                <>
+                  <Eye className="h-4 w-4" />
+                  Hide Synced
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -437,6 +504,19 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
         </div>
       )}
 
+      {/* Hidden files info */}
+      {hideSynced && files.length > filteredFiles.length && (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+          <div className="flex items-center gap-2">
+            <EyeOff className="h-4 w-4" />
+            <span>
+              {files.length - filteredFiles.length} synced file
+              {files.length - filteredFiles.length !== 1 ? 's' : ''} hidden
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* File grid */}
       {!loading && items.length > 0 && (
         <FileGrid
@@ -458,6 +538,35 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
           onNavigate={handleNavigate}
         />
       )}
+
+      {/* All files hidden state */}
+      {!loading &&
+        items.length === 0 &&
+        hideSynced &&
+        files.length > 0 &&
+        !error && (
+          <div className="flex h-64 items-center justify-center rounded-lg border-2 border-dashed border-green-300 bg-green-50">
+            <div className="text-center">
+              <EyeOff className="mx-auto h-12 w-12 text-green-600" />
+              <h3 className="mt-2 text-sm font-medium text-green-900">
+                All files are synced and hidden
+              </h3>
+              <p className="mt-1 text-sm text-green-700">
+                {files.length} file{files.length !== 1 ? 's' : ''} are hidden
+                because they are already synced.
+              </p>
+              <button
+                onClick={() => {
+                  setHideSynced(false);
+                  localStorage.setItem('hideSyncedFiles', 'false');
+                }}
+                className="mt-3 rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700"
+              >
+                Show synced files
+              </button>
+            </div>
+          </div>
+        )}
 
       {/* Infinite scroll trigger */}
       {hasMore && !loading && (

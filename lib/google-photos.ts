@@ -3,7 +3,6 @@ import {
   CreateMediaItemResponse,
 } from '@/types/google-photos';
 import { createLogger } from '@/lib/logger';
-import { ExtendedError } from '@/lib/errors';
 import { fetchWithRetry } from '@/lib/retry';
 import operationStatusManager, {
   trackOperation,

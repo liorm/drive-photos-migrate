@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
-import { getCacheStats, getLargestCachedFiles, getCacheGrowthStats } from './cache-db';
+import {
+  getCacheStats,
+  getLargestCachedFiles,
+  getCacheGrowthStats,
+} from './cache-db';
 import * as sqliteDb from './sqlite-db';
 import { runMigrations } from './migration';
 
@@ -58,19 +62,32 @@ describe('Cache DB functions', () => {
 
     // Seed the database
     const insertFolder = db.prepare(
-      "INSERT INTO cached_folders (user_email, folder_id, last_synced, total_count) VALUES (?, ?, ?, ?)"
+      'INSERT INTO cached_folders (user_email, folder_id, last_synced, total_count) VALUES (?, ?, ?, ?)'
     );
-    const folder1Id = insertFolder.run(userEmail, 'folder1', new Date().toISOString(), 10).lastInsertRowid;
+    const folder1Id = insertFolder.run(
+      userEmail,
+      'folder1',
+      new Date().toISOString(),
+      10
+    ).lastInsertRowid;
 
     const insertFile = db.prepare(
-      "INSERT INTO cached_files (cached_folder_id, file_id, name, mime_type, size) VALUES (?, ?, ?, ?, ?)"
+      'INSERT INTO cached_files (cached_folder_id, file_id, name, mime_type, size) VALUES (?, ?, ?, ?, ?)'
     );
     insertFile.run(folder1Id, 'file1', 'image.jpg', 'image/jpeg', '1024');
     insertFile.run(folder1Id, 'file2', 'video.mp4', 'video/mp4', '4096');
     insertFile.run(folder1Id, 'file3', 'doc.pdf', 'application/pdf', '512');
-    insertFile.run(folder1Id, 'file4', 'archive.zip', 'application/zip', '2048');
+    insertFile.run(
+      folder1Id,
+      'file4',
+      'archive.zip',
+      'application/zip',
+      '2048'
+    );
 
-    const insertSubfolder = db.prepare("INSERT INTO cached_subfolders (cached_folder_id, folder_id) VALUES (?, ?)");
+    const insertSubfolder = db.prepare(
+      'INSERT INTO cached_subfolders (cached_folder_id, folder_id) VALUES (?, ?)'
+    );
     insertSubfolder.run(folder1Id, 'subfolder1');
   });
 
@@ -116,21 +133,26 @@ describe('Cache DB functions', () => {
     });
 
     it('should return zero growth stats if no data was added today', async () => {
-        // Insert data for a different user
-        const otherUser = 'other@example.com';
-        const insertFolder = db.prepare(
-          "INSERT INTO cached_folders (user_email, folder_id, last_synced, total_count) VALUES (?, ?, ?, ?)"
-        );
-        const folderId = insertFolder.run(otherUser, 'folder2', '2024-01-01T00:00:00.000Z', 1).lastInsertRowid;
-        const insertFile = db.prepare(
-            "INSERT INTO cached_files (cached_folder_id, file_id, name, mime_type, size) VALUES (?, ?, ?, ?, ?)"
-        );
-        insertFile.run(folderId, 'file5', 'old.txt', 'text/plain', '100');
+      // Insert data for a different user
+      const otherUser = 'other@example.com';
+      const insertFolder = db.prepare(
+        'INSERT INTO cached_folders (user_email, folder_id, last_synced, total_count) VALUES (?, ?, ?, ?)'
+      );
+      const folderId = insertFolder.run(
+        otherUser,
+        'folder2',
+        '2024-01-01T00:00:00.000Z',
+        1
+      ).lastInsertRowid;
+      const insertFile = db.prepare(
+        'INSERT INTO cached_files (cached_folder_id, file_id, name, mime_type, size) VALUES (?, ?, ?, ?, ?)'
+      );
+      insertFile.run(folderId, 'file5', 'old.txt', 'text/plain', '100');
 
-        const stats = await getCacheGrowthStats(otherUser);
-        expect(stats.foldersAddedToday).toBe(0);
-        expect(stats.filesAddedToday).toBe(0);
-        expect(stats.sizeAddedToday).toBe(0);
+      const stats = await getCacheGrowthStats(otherUser);
+      expect(stats.foldersAddedToday).toBe(0);
+      expect(stats.filesAddedToday).toBe(0);
+      expect(stats.sizeAddedToday).toBe(0);
     });
   });
 });

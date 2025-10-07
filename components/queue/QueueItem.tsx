@@ -11,7 +11,7 @@ import {
   FolderOpen,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface QueueItemProps {
   item: QueueItemType;
@@ -90,23 +90,9 @@ export function QueueItem({ item, onRemove }: QueueItemProps) {
     return date.toLocaleString();
   };
 
-  // Fetch folder path on component mount if not already available
-  useEffect(() => {
-    const shouldFetchPath = !folderPath && !isLoadingPath && !pathError;
-    
-    if (shouldFetchPath) {
-      // Add a small delay to batch requests and avoid overwhelming the API
-      const timeoutId = setTimeout(() => {
-        fetchFolderPath();
-      }, Math.random() * 500); // Random delay between 0-500ms to spread requests
-      
-      return () => clearTimeout(timeoutId);
-    }
-  }, [folderPath, isLoadingPath, pathError]); // Dependencies to control when to fetch
-
-  const fetchFolderPath = async () => {
+  const fetchFolderPath = useCallback(async () => {
     if (isLoadingPath) return;
-    
+
     // Check cache first
     const cacheKey = item.id;
     if (folderPathCache.has(cacheKey)) {
@@ -114,19 +100,19 @@ export function QueueItem({ item, onRemove }: QueueItemProps) {
       setFolderPath(cachedPath || null);
       return;
     }
-    
+
     setIsLoadingPath(true);
     setPathError(null);
 
     try {
       const response = await fetch(`/api/queue/${item.id}/enrich`);
-      
+
       if (!response.ok) {
         throw new Error(`Failed to fetch folder path: ${response.status}`);
       }
 
       const data: EnrichResponse = await response.json();
-      
+
       if (data.success) {
         // Cache the result
         folderPathCache.set(cacheKey, data.folderPath);
@@ -135,13 +121,28 @@ export function QueueItem({ item, onRemove }: QueueItemProps) {
         setPathError(data.error || 'Failed to load folder path');
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       setPathError(errorMessage);
       console.warn('Failed to fetch folder path for queue item:', errorMessage);
     } finally {
       setIsLoadingPath(false);
     }
-  };
+  }, [item.id, isLoadingPath]);
+
+  // Fetch folder path on component mount if not already available
+  useEffect(() => {
+    const shouldFetchPath = !folderPath && !isLoadingPath && !pathError;
+
+    if (shouldFetchPath) {
+      // Add a small delay to batch requests and avoid overwhelming the API
+      const timeoutId = setTimeout(() => {
+        fetchFolderPath();
+      }, Math.random() * 500); // Random delay between 0-500ms to spread requests
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [folderPath, isLoadingPath, pathError, fetchFolderPath]); // Dependencies to control when to fetch
 
   const handleNavigateToFolder = () => {
     if (folderPath && folderPath.length > 0) {
@@ -175,7 +176,7 @@ export function QueueItem({ item, onRemove }: QueueItemProps) {
     }
 
     const pathString = folderPath.map(folder => folder.name).join(' / ');
-    
+
     return (
       <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
         <FolderOpen className="h-3 w-3" />
@@ -236,7 +237,7 @@ export function QueueItem({ item, onRemove }: QueueItemProps) {
             <FolderOpen className="h-4 w-4" />
           </button>
         )}
-        
+
         {/* Remove Button (only for pending and failed items) */}
         {(item.status === 'pending' || item.status === 'failed') && (
           <button

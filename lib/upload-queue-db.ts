@@ -1,7 +1,6 @@
 import { getDatabase } from './sqlite-db';
 import { QueueItem, QueueItemStatus } from '@/types/upload-queue';
 import { isFileUploaded } from './uploads-db';
-import { getFileDetailsFromCache } from './db';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('upload-queue-db');

@@ -212,7 +212,8 @@ export async function fetchWithRetry(
       let responseBody = '';
       try {
         responseBody = await response.text();
-      } catch (e) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      } catch (_e) {
         // ignore read errors
       }
 

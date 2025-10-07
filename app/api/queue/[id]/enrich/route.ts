@@ -43,9 +43,7 @@ async function handleGET(
       .prepare(
         'SELECT drive_file_id FROM queue_items WHERE id = ? AND user_email = ?'
       )
-      .get(queueItemId, userEmail) as
-      | { drive_file_id: string }
-      | undefined;
+      .get(queueItemId, userEmail) as { drive_file_id: string } | undefined;
 
     if (!queueItem) {
       return NextResponse.json(

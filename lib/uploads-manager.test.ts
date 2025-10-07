@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import uploadsManager from './uploads-manager';
 import { GoogleAuthContext } from '@/types/auth';
 import { QueueItem } from '@/types/upload-queue';
@@ -205,12 +205,15 @@ describe('UploadsManager', () => {
         fileSize: 1024,
         addedAt: new Date().toISOString(),
       };
-      vi.mocked(uploadQueueDb.getQueueByStatus).mockResolvedValue([pendingItem]);
+      vi.mocked(uploadQueueDb.getQueueByStatus).mockResolvedValue([
+        pendingItem,
+      ]);
       vi.mocked(googlePhotos.downloadDriveFile).mockResolvedValue(
         Buffer.from('test data')
       );
       // This is a private method, so we need to mock the public method that calls it
       const uploadBytesSpy = vi
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .spyOn(uploadsManager as any, 'uploadBytes')
         .mockResolvedValue('upload-token-123');
 
@@ -257,7 +260,9 @@ describe('UploadsManager', () => {
         fileSize: 1024,
         addedAt: new Date().toISOString(),
       };
-      vi.mocked(uploadQueueDb.getQueueByStatus).mockResolvedValue([pendingItem]);
+      vi.mocked(uploadQueueDb.getQueueByStatus).mockResolvedValue([
+        pendingItem,
+      ]);
       vi.mocked(googlePhotos.downloadDriveFile).mockRejectedValue(
         new Error('Download failed')
       );

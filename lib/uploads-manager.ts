@@ -9,7 +9,11 @@ import {
 import { getFileMetadataFromDriveCache } from './db';
 import { getDriveFile } from './google-drive';
 import { GoogleAuthContext } from '@/types/auth';
-import { downloadDriveFile, batchCreateMediaItems, uploadBytes as photosUploadBytes } from './google-photos';
+import {
+  downloadDriveFile,
+  batchCreateMediaItems,
+  uploadBytes as photosUploadBytes,
+} from './google-photos';
 import { recordUpload } from './uploads-db';
 import { clearFileSyncStatusCache } from './sync-status';
 import { createLogger } from './logger';
