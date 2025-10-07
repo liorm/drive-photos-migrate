@@ -14,6 +14,37 @@ function formatBytes(bytes: number, decimals = 2) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
+// Helper function to format relative time
+function formatRelativeTime(dateString: string) {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+  if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+  return date.toLocaleDateString();
+}
+
+interface CacheStats {
+  cachedFolders: number;
+  cachedFiles: number;
+  cachedSubfolders: number;
+  totalCacheSize: number;
+  averageFileSize: number;
+  lastCacheUpdate: string | null;
+  fileTypeBreakdown: {
+    images: number;
+    videos: number;
+    documents: number;
+    other: number;
+  };
+}
+
 interface Stats {
   total: number;
   pending: number;
@@ -22,6 +53,7 @@ interface Stats {
   failed: number;
   uploaded: number;
   storageUsed: number;
+  cache: CacheStats;
 }
 
 export default function Home() {
@@ -63,7 +95,7 @@ export default function Home() {
         </p>
       </div>
 
-      {/* Stats Cards */}
+      {/* Queue & Upload Stats */}
       <div className="grid gap-6 md:grid-cols-3">
         <div className="rounded-lg bg-white p-6 shadow-md transition-shadow hover:shadow-lg">
           <div className="mb-2 flex items-center justify-between">
@@ -137,6 +169,146 @@ export default function Home() {
           </p>
           <p className="mt-1 text-xs text-gray-500">Transferred</p>
         </div>
+      </div>
+
+      {/* Cache Statistics */}
+      <div className="rounded-lg bg-white p-6 shadow-md">
+        <h2 className="mb-4 text-xl font-semibold text-gray-800">
+          Drive Cache Statistics
+        </h2>
+        <div className="grid gap-6 md:grid-cols-4">
+          <div className="text-center">
+            <div className="mb-2 flex items-center justify-center">
+              <svg
+                className="h-8 w-8 text-indigo-500"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                />
+              </svg>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">
+              {stats?.cache ? stats.cache.cachedFolders : '0'}
+            </p>
+            <p className="text-sm text-gray-500">Folders Cached</p>
+          </div>
+
+          <div className="text-center">
+            <div className="mb-2 flex items-center justify-center">
+              <svg
+                className="h-8 w-8 text-orange-500"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">
+              {stats?.cache ? stats.cache.cachedFiles.toLocaleString() : '0'}
+            </p>
+            <p className="text-sm text-gray-500">Files Cached</p>
+          </div>
+
+          <div className="text-center">
+            <div className="mb-2 flex items-center justify-center">
+              <svg
+                className="h-8 w-8 text-teal-500"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+                />
+              </svg>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">
+              {stats?.cache ? formatBytes(stats.cache.totalCacheSize) : '0 MB'}
+            </p>
+            <p className="text-sm text-gray-500">Cache Size</p>
+          </div>
+
+          <div className="text-center">
+            <div className="mb-2 flex items-center justify-center">
+              <svg
+                className="h-8 w-8 text-pink-500"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                />
+              </svg>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">
+              {stats?.cache ? formatBytes(stats.cache.averageFileSize) : '0 MB'}
+            </p>
+            <p className="text-sm text-gray-500">Avg File Size</p>
+          </div>
+        </div>
+
+        {/* File Type Breakdown */}
+        {stats?.cache && (
+          <div className="mt-6 border-t pt-6">
+            <h3 className="mb-4 text-lg font-medium text-gray-800">
+              File Type Breakdown
+            </h3>
+            <div className="grid gap-4 md:grid-cols-4">
+              <div className="flex items-center space-x-3">
+                <div className="h-3 w-3 rounded-full bg-blue-500"></div>
+                <span className="text-sm text-gray-600">
+                  Images:{' '}
+                  {stats.cache.fileTypeBreakdown.images.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex items-center space-x-3">
+                <div className="h-3 w-3 rounded-full bg-red-500"></div>
+                <span className="text-sm text-gray-600">
+                  Videos:{' '}
+                  {stats.cache.fileTypeBreakdown.videos.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex items-center space-x-3">
+                <div className="h-3 w-3 rounded-full bg-green-500"></div>
+                <span className="text-sm text-gray-600">
+                  Documents:{' '}
+                  {stats.cache.fileTypeBreakdown.documents.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex items-center space-x-3">
+                <div className="h-3 w-3 rounded-full bg-gray-500"></div>
+                <span className="text-sm text-gray-600">
+                  Other: {stats.cache.fileTypeBreakdown.other.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            {stats.cache.lastCacheUpdate && (
+              <div className="mt-4 text-sm text-gray-500">
+                Last updated: {formatRelativeTime(stats.cache.lastCacheUpdate)}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Quick Actions */}

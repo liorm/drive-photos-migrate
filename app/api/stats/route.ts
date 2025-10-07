@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { getQueueStats } from '@/lib/upload-queue-db';
 import { getUploadsStats } from '@/lib/uploads-db';
+import { getCacheStats } from '@/lib/cache-db';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('stats-api');
@@ -14,15 +15,17 @@ export async function GET() {
   }
 
   try {
-    const [queueStats, uploadsStats] = await Promise.all([
+    const [queueStats, uploadsStats, cacheStats] = await Promise.all([
       getQueueStats(session.user.email),
       getUploadsStats(session.user.email),
+      getCacheStats(session.user.email),
     ]);
 
     const stats = {
       ...queueStats,
       uploaded: uploadsStats.count,
       storageUsed: uploadsStats.totalSize,
+      cache: cacheStats,
     };
 
     return NextResponse.json(stats);
