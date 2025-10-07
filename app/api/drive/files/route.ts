@@ -129,8 +129,8 @@ async function handleGET(request: NextRequest) {
       refreshToken: session.refreshToken,
     },
     folderId,
+    userEmail,
   });
-
   // Get sync status for files and folders
   // For files: bulk check upload status
   const fileIds = cachedData.files.map(f => f.id);

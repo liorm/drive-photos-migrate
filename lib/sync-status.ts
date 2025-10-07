@@ -231,6 +231,7 @@ async function getParentFolderIds(
   const folderPath = await getFolderPath({
     auth,
     folderId,
+    userEmail,
   });
 
   // Remove the last item (current folder) and first item (root)

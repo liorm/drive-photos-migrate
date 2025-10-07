@@ -5,6 +5,7 @@ import {
   DriveFolder,
   SUPPORTED_MIME_TYPES,
 } from '@/types/google-drive';
+import { getFolderDetailsFromCache } from '@/lib/db';
 import { createLogger } from '@/lib/logger';
 import { ExtendedError } from '@/lib/errors';
 import { retryWithBackoff } from '@/lib/retry';
@@ -295,72 +296,80 @@ export async function listAllDriveFiles({
 interface GetFolderPathParams {
   auth: GoogleAuthContext;
   folderId: string;
+  userEmail: string;
   operationId?: string;
 }
 
 export async function getFolderPath({
   auth,
   folderId,
+  userEmail,
   operationId,
 }: GetFolderPathParams) {
   if (folderId === 'root') {
     return [{ id: 'root', name: 'My Drive' }];
   }
 
-  logger.debug('Getting folder path for breadcrumbs', { folderId });
+  logger.debug('Getting folder path for breadcrumbs', { folderId, userEmail });
 
   try {
     const path: Array<{ id: string; name: string }> = [];
-
     let currentId = folderId;
 
-    // Traverse up the folder hierarchy
     while (currentId !== 'root') {
-      const response = await retryWithBackoff(
-        async () => {
-          const { result } = await withGoogleAuthRetry(auth, async token => {
-            const drv = getDriveClient(token);
-            return await drv.files.get({
-              fileId: currentId,
-              fields: 'id, name, parents',
-            });
-          });
-          return result;
-        },
-        {
-          maxRetries: 3,
-          onRetry: (error, attempt, delay) => {
-            logger.warn('Retrying get folder path', {
-              currentId,
-              attempt,
-              delay,
-              error: error.message,
-            });
+      let name: string;
+      let parent: string | undefined;
 
-            // Update operation status if tracking
-            if (operationId) {
-              operationStatusManager.retryOperation(
-                operationId,
-                `Get folder path failed: ${error.message}`,
-                attempt,
-                3
-              );
-            }
+      const cachedData = getFolderDetailsFromCache(userEmail, currentId);
+
+      if (cachedData) {
+        name = cachedData.name;
+        parent = cachedData.parents?.[0];
+      } else {
+        const response = await retryWithBackoff(
+          async () => {
+            const { result } = await withGoogleAuthRetry(auth, async token => {
+              const drv = getDriveClient(token);
+              return await drv.files.get({
+                fileId: currentId,
+                fields: 'id, name, parents',
+              });
+            });
+            return result;
           },
-        }
-      );
+          {
+            maxRetries: 3,
+            onRetry: (error, attempt, delay) => {
+              logger.warn('Retrying get folder path', {
+                currentId,
+                attempt,
+                delay,
+                error: error.message,
+              });
+              if (operationId) {
+                operationStatusManager.retryOperation(
+                  operationId,
+                  `Get folder path failed: ${error.message}`,
+                  attempt,
+                  3
+                );
+              }
+            },
+          }
+        );
+        name = response.data.name!;
+        parent = response.data.parents?.[0];
+      }
 
-      const file = response.data;
-      path.unshift({ id: file.id!, name: file.name! });
+      path.unshift({ id: currentId, name });
 
-      if (file.parents && file.parents.length > 0) {
-        currentId = file.parents[0];
+      if (parent) {
+        currentId = parent;
       } else {
         break;
       }
     }
 
-    // Add root at the beginning
     path.unshift({ id: 'root', name: 'My Drive' });
 
     logger.debug('Folder path retrieved', {
@@ -372,7 +381,6 @@ export async function getFolderPath({
     return path;
   } catch (error) {
     logger.error('Error getting folder path', error, { folderId });
-    // Return at least root on error
     return [{ id: 'root', name: 'My Drive' }];
   }
 }

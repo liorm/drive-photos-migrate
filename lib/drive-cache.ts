@@ -87,7 +87,7 @@ export async function syncFolderToCache(
       logger.info('Starting folder sync to cache', { userEmail, folderId });
 
       // Don't wait for this, let it update the description in the background
-      getFolderPath({ auth, folderId, operationId })
+      getFolderPath({ auth, folderId, operationId, userEmail })
         .then(breadcrumbs => {
           const breadcrumbString = breadcrumbs.map(b => b.name).join(' / ');
           operationStatusManager.updateOperation(operationId, {

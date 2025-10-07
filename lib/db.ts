@@ -388,6 +388,45 @@ export function getFileMetadataFromDriveCache(
   };
 }
 
+/**
+ * Get folder metadata from Drive cache by folder ID
+ */
+export function getFolderDetailsFromCache(
+  userEmail: string,
+  folderId: string
+): { name: string; parents: string[] } | null {
+  const db = getDatabase();
+
+  const subfolderRow = db
+    .prepare(
+      `SELECT cs.name, cs.parents
+       FROM cached_subfolders cs
+       JOIN cached_folders cfolder ON cs.cached_folder_id = cfolder.id
+       WHERE cfolder.user_email = ? AND cs.folder_id = ?
+       LIMIT 1`
+    )
+    .get(userEmail, folderId) as { name: string; parents: string | null } as
+    | {
+        name: string;
+        parents: string | null;
+      }
+    | undefined;
+
+  if (subfolderRow?.parents) {
+    logger.debug('Retrieved folder info from Drive cache', {
+      userEmail,
+      folderId,
+      folderName: subfolderRow.name,
+    });
+    return {
+      name: subfolderRow.name,
+      parents: JSON.parse(subfolderRow.parents),
+    };
+  }
+
+  return null;
+}
+
 // ============================================================================
 // Sync Status Cache Operations
 // ============================================================================

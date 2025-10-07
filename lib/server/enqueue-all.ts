@@ -22,7 +22,7 @@ async function discoverFolders(
   const page = await getCachedFolderPage(userEmail, folderId, 0, 1000); // Assuming max 1000 folders per folder
 
   if (page) {
-    const folderPath = await getFolderPath({ auth, folderId });
+    const folderPath = await getFolderPath({ auth, folderId, userEmail });
     const currentFolder = folderPath[folderPath.length - 1] ?? {
       id: 'root',
       name: 'Root',
