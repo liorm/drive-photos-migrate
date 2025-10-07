@@ -3,6 +3,7 @@ import { auth } from '@/auth';
 import uploadsManager from '@/lib/uploads-manager';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
+import { validateSession } from '@/lib/auth-utils';
 
 const logger = createLogger('api:queue:process');
 
@@ -12,51 +13,25 @@ const logger = createLogger('api:queue:process');
 async function handlePOST(_request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7);
 
-  // Get session
+  // Get and validate session
   const session = await auth();
+  const sessionResult = validateSession(session, requestId);
 
-  if (
-    !session?.accessToken ||
-    !session?.refreshToken ||
-    !session?.user?.email
-  ) {
-    logger.warn('Unauthorized request - No access token or refresh token', {
-      requestId,
-    });
-    return NextResponse.json(
-      { error: 'Unauthorized - No access token or refresh token' },
-      { status: 401 }
-    );
+  if (!sessionResult.success) {
+    return sessionResult.response;
   }
 
-  // Check if token refresh failed
-  if (session.error === 'RefreshAccessTokenError') {
-    logger.warn('Authentication expired', {
-      requestId,
-      userEmail: session.user.email,
-    });
-    return NextResponse.json(
-      { error: 'Authentication expired - Please sign in again' },
-      { status: 401 }
-    );
-  }
-
-  const userEmail = session.user.email;
+  const { userEmail, auth: authContext } = sessionResult.data;
   logger.info('Process queue request', { requestId, userEmail });
 
   // Start processing queue in the background
   // Don't await - let it run asynchronously
-  uploadsManager
-    .startProcessing(userEmail, {
-      accessToken: session.accessToken,
-      refreshToken: session.refreshToken,
-    })
-    .catch(error => {
-      logger.error('Error processing queue', error, {
-        requestId,
-        userEmail,
-      });
+  uploadsManager.startProcessing(userEmail, authContext).catch(error => {
+    logger.error('Error processing queue', error, {
+      requestId,
+      userEmail,
     });
+  });
 
   logger.info('Queue processing started', { requestId, userEmail });
 

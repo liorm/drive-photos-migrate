@@ -16,42 +16,22 @@ import { getQueuedFileIds } from '@/lib/upload-queue-db';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
 import { clearFolderFromCache } from '@/lib/db';
+import { validateSession } from '@/lib/auth-utils';
 
 const logger = createLogger('api:drive:files');
 
 async function handleGET(request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7);
 
-  // Get session to retrieve access token
+  // Get and validate session
   const session = await auth();
+  const sessionResult = validateSession(session, requestId);
 
-  if (
-    !session?.accessToken ||
-    !session?.refreshToken ||
-    !session?.user?.email
-  ) {
-    logger.warn('Unauthorized request - No access token or refresh token', {
-      requestId,
-    });
-    return NextResponse.json(
-      { error: 'Unauthorized - No access token or refresh token' },
-      { status: 401 }
-    );
+  if (!sessionResult.success) {
+    return sessionResult.response;
   }
 
-  // Check if token refresh failed
-  if (session.error === 'RefreshAccessTokenError') {
-    logger.warn('Authentication expired', {
-      requestId,
-      userEmail: session.user.email,
-    });
-    return NextResponse.json(
-      { error: 'Authentication expired - Please sign in again' },
-      { status: 401 }
-    );
-  }
-
-  const userEmail = session.user.email;
+  const { userEmail, auth: authContext } = sessionResult.data;
 
   // Parse query parameters
   const searchParams = request.nextUrl.searchParams;
@@ -90,10 +70,7 @@ async function handleGET(request: NextRequest) {
         folderId,
       });
       clearFolderFromCache(userEmail, folderId);
-      await clearSyncStatusCacheForFolder(userEmail, folderId, {
-        accessToken: session.accessToken,
-        refreshToken: session.refreshToken,
-      });
+      await clearSyncStatusCacheForFolder(userEmail, folderId, authContext);
     }
 
     // Sync all files from Drive API to cache
@@ -102,10 +79,7 @@ async function handleGET(request: NextRequest) {
       userEmail,
       folderId,
     });
-    await syncFolderToCache(userEmail, folderId, {
-      accessToken: session.accessToken,
-      refreshToken: session.refreshToken,
-    });
+    await syncFolderToCache(userEmail, folderId, authContext);
   }
 
   // Get paginated data from cache
@@ -130,10 +104,7 @@ async function handleGET(request: NextRequest) {
 
   // Get folder path for breadcrumbs
   const folderPath = await getFolderPath({
-    auth: {
-      accessToken: session.accessToken,
-      refreshToken: session.refreshToken,
-    },
+    auth: authContext,
     folderId,
     userEmail,
   });

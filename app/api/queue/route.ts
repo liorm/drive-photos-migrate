@@ -7,6 +7,7 @@ import { withErrorHandler } from '@/lib/error-handler';
 import operationStatusManager, { OperationType } from '@/lib/operation-status';
 import uploadsManager from '@/lib/uploads-manager';
 import { GoogleAuthContext } from '@/types/auth';
+import { validateSession } from '@/lib/auth-utils';
 
 const logger = createLogger('api:queue');
 
@@ -62,36 +63,15 @@ async function processFilesAsync(
 async function handleGET(_request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7);
 
-  // Get session
+  // Get and validate session
   const session = await auth();
+  const sessionResult = validateSession(session, requestId);
 
-  if (
-    !session?.accessToken ||
-    !session?.refreshToken ||
-    !session?.user?.email
-  ) {
-    logger.warn('Unauthorized request - No access token or refresh token', {
-      requestId,
-    });
-    return NextResponse.json(
-      { error: 'Unauthorized - No access token or refresh token' },
-      { status: 401 }
-    );
+  if (!sessionResult.success) {
+    return sessionResult.response;
   }
 
-  // Check if token refresh failed
-  if (session.error === 'RefreshAccessTokenError') {
-    logger.warn('Authentication expired', {
-      requestId,
-      userEmail: session.user.email,
-    });
-    return NextResponse.json(
-      { error: 'Authentication expired - Please sign in again' },
-      { status: 401 }
-    );
-  }
-
-  const userEmail = session.user.email;
+  const { userEmail } = sessionResult.data;
 
   logger.info('Get queue request', { requestId, userEmail });
 
@@ -118,36 +98,15 @@ async function handleGET(_request: NextRequest) {
 async function handlePOST(request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7);
 
-  // Get session
+  // Get and validate session
   const session = await auth();
+  const sessionResult = validateSession(session, requestId);
 
-  if (
-    !session?.accessToken ||
-    !session?.refreshToken ||
-    !session?.user?.email
-  ) {
-    logger.warn('Unauthorized request - No access token or refresh token', {
-      requestId,
-    });
-    return NextResponse.json(
-      { error: 'Unauthorized - No access token or refresh token' },
-      { status: 401 }
-    );
+  if (!sessionResult.success) {
+    return sessionResult.response;
   }
 
-  // Check if token refresh failed
-  if (session.error === 'RefreshAccessTokenError') {
-    logger.warn('Authentication expired', {
-      requestId,
-      userEmail: session.user.email,
-    });
-    return NextResponse.json(
-      { error: 'Authentication expired - Please sign in again' },
-      { status: 401 }
-    );
-  }
-
-  const userEmail = session.user.email;
+  const { userEmail, auth: authContext } = sessionResult.data;
 
   // Parse request body
   const body: AddToQueueRequestBody = await request.json();
@@ -220,16 +179,7 @@ async function handlePOST(request: NextRequest) {
     operationStatusManager.startOperation(operationId);
 
     // Process files asynchronously in the background
-    processFilesAsync(
-      operationId,
-      userEmail,
-      fileIds,
-      {
-        accessToken: session.accessToken,
-        refreshToken: session.refreshToken!,
-      },
-      requestId
-    );
+    processFilesAsync(operationId, userEmail, fileIds, authContext, requestId);
 
     // Return immediately so client can see progress updates via SSE
     return NextResponse.json({
@@ -244,10 +194,7 @@ async function handlePOST(request: NextRequest) {
   try {
     const result = await uploadsManager.addToQueue({
       userEmail,
-      auth: {
-        accessToken: session.accessToken,
-        refreshToken: session.refreshToken,
-      },
+      auth: authContext,
       fileIds,
     });
 

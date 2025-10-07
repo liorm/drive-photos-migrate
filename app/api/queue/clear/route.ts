@@ -3,6 +3,7 @@ import { auth } from '@/auth';
 import { clearCompletedItems, clearAllItems } from '@/lib/upload-queue-db';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
+import { validateSession } from '@/lib/auth-utils';
 
 const logger = createLogger('api:queue:clear');
 
@@ -15,36 +16,15 @@ async function handleDELETE(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const clearAll = searchParams.get('all') === 'true';
 
-  // Get session
+  // Get and validate session
   const session = await auth();
+  const sessionResult = validateSession(session, requestId);
 
-  if (
-    !session?.accessToken ||
-    !session?.refreshToken ||
-    !session?.user?.email
-  ) {
-    logger.warn('Unauthorized request - No access token or refresh token', {
-      requestId,
-    });
-    return NextResponse.json(
-      { error: 'Unauthorized - No access token or refresh token' },
-      { status: 401 }
-    );
+  if (!sessionResult.success) {
+    return sessionResult.response;
   }
 
-  // Check if token refresh failed
-  if (session.error === 'RefreshAccessTokenError') {
-    logger.warn('Authentication expired', {
-      requestId,
-      userEmail: session.user.email,
-    });
-    return NextResponse.json(
-      { error: 'Authentication expired - Please sign in again' },
-      { status: 401 }
-    );
-  }
-
-  const userEmail = session.user.email;
+  const { userEmail } = sessionResult.data;
 
   if (clearAll) {
     logger.info('Clear all items request', { requestId, userEmail });

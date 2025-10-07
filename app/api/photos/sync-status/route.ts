@@ -7,30 +7,22 @@ import {
 import { getUploadRecords } from '@/lib/uploads-db';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
+import { validateSession } from '@/lib/auth-utils';
 
 const logger = createLogger('api:photos:sync-status');
 
 async function handleGET(request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7);
 
-  // Get session to retrieve access token
+  // Get and validate session
   const session = await auth();
+  const sessionResult = validateSession(session, requestId);
 
-  if (
-    !session?.accessToken ||
-    !session?.refreshToken ||
-    !session?.user?.email
-  ) {
-    logger.warn('Unauthorized request - No access token or refresh token', {
-      requestId,
-    });
-    return NextResponse.json(
-      { error: 'Unauthorized - No access token or refresh token' },
-      { status: 401 }
-    );
+  if (!sessionResult.success) {
+    return sessionResult.response;
   }
 
-  const userEmail = session.user.email;
+  const { userEmail } = sessionResult.data;
 
   // Parse query parameters
   const searchParams = request.nextUrl.searchParams;

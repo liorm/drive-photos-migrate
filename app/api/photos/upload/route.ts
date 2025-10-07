@@ -11,6 +11,7 @@ import { GoogleAuthContext } from '@/types/auth';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
 import { clearFolderFromCache } from '@/lib/db';
+import { validateSession } from '@/lib/auth-utils';
 
 const logger = createLogger('api:photos:upload');
 
@@ -22,36 +23,15 @@ interface UploadRequestBody {
 async function handlePOST(request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7);
 
-  // Get session to retrieve access token
+  // Get and validate session
   const session = await auth();
+  const sessionResult = validateSession(session, requestId);
 
-  if (
-    !session?.accessToken ||
-    !session?.refreshToken ||
-    !session?.user?.email
-  ) {
-    logger.warn('Unauthorized request - No access token or refresh token', {
-      requestId,
-    });
-    return NextResponse.json(
-      { error: 'Unauthorized - No access token or refresh token' },
-      { status: 401 }
-    );
+  if (!sessionResult.success) {
+    return sessionResult.response;
   }
 
-  // Check if token refresh failed
-  if (session.error === 'RefreshAccessTokenError') {
-    logger.warn('Authentication expired', {
-      requestId,
-      userEmail: session.user.email,
-    });
-    return NextResponse.json(
-      { error: 'Authentication expired - Please sign in again' },
-      { status: 401 }
-    );
-  }
-
-  const userEmail = session.user.email;
+  const { userEmail, auth: authContext } = sessionResult.data;
 
   // Parse request body
   const body: UploadRequestBody = await request.json();
@@ -104,11 +84,6 @@ async function handlePOST(request: NextRequest) {
     mimeType: string;
     driveFileId: string;
   }> = [];
-
-  const authContext: GoogleAuthContext = {
-    accessToken: session.accessToken,
-    refreshToken: session.refreshToken,
-  };
 
   for (const fileId of fileIds) {
     try {

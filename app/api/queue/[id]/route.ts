@@ -3,6 +3,7 @@ import { auth } from '@/auth';
 import { removeFromQueue } from '@/lib/upload-queue-db';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
+import { validateSession } from '@/lib/auth-utils';
 
 const logger = createLogger('api:queue:item');
 
@@ -16,36 +17,15 @@ async function handleDELETE(
   const requestId = Math.random().toString(36).substring(7);
   const { id: queueItemId } = await params;
 
-  // Get session
+  // Get and validate session
   const session = await auth();
+  const sessionResult = validateSession(session, requestId);
 
-  if (
-    !session?.accessToken ||
-    !session?.refreshToken ||
-    !session?.user?.email
-  ) {
-    logger.warn('Unauthorized request - No access token or refresh token', {
-      requestId,
-    });
-    return NextResponse.json(
-      { error: 'Unauthorized - No access token or refresh token' },
-      { status: 401 }
-    );
+  if (!sessionResult.success) {
+    return sessionResult.response;
   }
 
-  // Check if token refresh failed
-  if (session.error === 'RefreshAccessTokenError') {
-    logger.warn('Authentication expired', {
-      requestId,
-      userEmail: session.user.email,
-    });
-    return NextResponse.json(
-      { error: 'Authentication expired - Please sign in again' },
-      { status: 401 }
-    );
-  }
-
-  const userEmail = session.user.email;
+  const { userEmail } = sessionResult.data;
 
   logger.info('Remove queue item request', {
     requestId,
