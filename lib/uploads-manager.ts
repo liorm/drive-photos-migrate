@@ -305,23 +305,22 @@ class UploadsManager {
       let stopRequestedDuringRun = false;
 
       // Concurrency settings
-      const DEFAULT_CONCURRENCY =
-        parseInt(process.env.QUEUE_CONCURRENCY || '5', 10) || 5;
-      // Maximum concurrency allowed for processing workers. Can be tuned via
-      // the QUEUE_MAX_CONCURRENCY env var. This caps the number of concurrent
-      // workers that will process queue items for a single user. Use this to
-      // limit parallel downloads/uploads and control API usage.
+      // Single env-driven concurrency level for processing workers. Use this
+      // to control how many parallel workers will process a single user's
+      // upload queue. The value is bounded by a hard cap to prevent runaway
+      // concurrency.
       //
-      // Env: QUEUE_MAX_CONCURRENCY (integer)
-      const MAX_CONCURRENCY = Math.max(
+      // Env: QUEUE_CONCURRENCY (integer, default 5, max 10)
+      const envConcurrency = Math.max(
         1,
-        parseInt(process.env.QUEUE_MAX_CONCURRENCY || '10', 10)
+        parseInt(process.env.QUEUE_CONCURRENCY || '5', 10)
       );
+      const MAX_ALLOWED_CONCURRENCY = 15;
       const concurrency = Math.max(
         1,
         Math.min(
-          MAX_CONCURRENCY,
-          Math.min(DEFAULT_CONCURRENCY, pendingItems.length)
+          MAX_ALLOWED_CONCURRENCY,
+          Math.min(envConcurrency, pendingItems.length)
         )
       );
 

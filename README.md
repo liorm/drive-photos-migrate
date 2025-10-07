@@ -101,6 +101,9 @@ Additional tuning environment variables
 - `PHOTOS_UPLOAD_BATCH_SIZE` (integer, default 5, max 50): Number of media
    items sent per `mediaItems:batchCreate` call when using the `batchUploadFiles`
    helper (used by file upload flows). Keep this <= 50.
+   - `QUEUE_CONCURRENCY` (integer, default 5, max 10): Number of concurrent
+      workers used to process a single user's upload queue. Lower this to reduce
+      parallel downloads/uploads and overall API usage.
 
 5. **Run the development server:**
    pnpm dev
