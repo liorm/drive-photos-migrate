@@ -31,9 +31,6 @@ class UploadsManager {
   // Per-user AbortControllers for in-flight work so we can cancel downloads/uploads
   private activeControllers = new Map<string, AbortController>();
 
-  // Track stop requests (set by API/UI) so processing can be stopped gracefully
-  private stopRequests = new Set<string>();
-
   private static instance: UploadsManager | undefined;
   private initialized = false;
 
@@ -271,15 +268,6 @@ class UploadsManager {
       return;
     }
 
-    // Respect a stop request that was issued before processing started
-    if (this.stopRequests.has(userEmail)) {
-      logger.info('Stop requested before starting processing, skipping', {
-        userEmail,
-      });
-      this.stopRequests.delete(userEmail);
-      return;
-    }
-
     // Mark as processing
     this.activeProcessing.add(userEmail);
 
@@ -510,19 +498,7 @@ class UploadsManager {
 
       for (let w = 0; w < concurrency; w++) {
         const worker = (async () => {
-          while (true) {
-            // Respect a stop request between items
-            if (this.stopRequests.has(userEmail)) {
-              logger.info('Stop requested during processing, worker exiting', {
-                userEmail,
-                workerId: w,
-              });
-
-              stopRequestedDuringRun = true;
-              this.stopRequests.delete(userEmail);
-              break;
-            }
-
+          while (!controller.signal.aborted) {
             const index = nextIndex++;
             if (index >= pendingItems.length) break;
             const item = pendingItems[index];
@@ -537,22 +513,6 @@ class UploadsManager {
 
             // Wait if the user is paused due to a backoff triggered elsewhere
             await backoffController.waitWhilePaused(userEmail);
-
-            // Check stop request again after any pause
-            if (this.stopRequests.has(userEmail)) {
-              logger.info(
-                'Stop requested during processing (after pause), worker exiting',
-                {
-                  userEmail,
-                  workerId: w,
-                  queueItemId: item.id,
-                }
-              );
-
-              stopRequestedDuringRun = true;
-              this.stopRequests.delete(userEmail);
-              break;
-            }
 
             try {
               await retryWithBackoff(
@@ -780,8 +740,6 @@ class UploadsManager {
    */
   stopProcessing(userEmail: string): void {
     logger.info('Stop processing requested', { userEmail });
-
-    this.stopRequests.add(userEmail);
 
     // If there's no active processing for this user, reset any stuck uploading items
     // so future processing attempts are not blocked by leftover 'uploading' states.
