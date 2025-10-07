@@ -398,7 +398,8 @@ class UploadsManager {
                 queueItem.driveFileId,
                 result.mediaItemId,
                 queueItem.fileName,
-                queueItem.mimeType
+                queueItem.mimeType,
+                queueItem.fileSize
               );
 
               // Clear sync status cache for this file

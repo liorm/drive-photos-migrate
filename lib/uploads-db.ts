@@ -41,7 +41,7 @@ export async function getUploadRecord(
 
   const result = db
     .prepare(
-      `SELECT photos_media_item_id, uploaded_at, file_name, mime_type
+      `SELECT photos_media_item_id, uploaded_at, file_name, mime_type, file_size
        FROM uploads
        WHERE user_email = ? AND drive_file_id = ?`
     )
@@ -51,6 +51,7 @@ export async function getUploadRecord(
         uploaded_at: string;
         file_name: string;
         mime_type: string;
+        file_size: number | null;
       }
     | undefined;
 
@@ -66,6 +67,7 @@ export async function getUploadRecord(
     uploadedAt: result.uploaded_at,
     fileName: result.file_name,
     mimeType: result.mime_type,
+    fileSize: result.file_size || undefined,
   };
 }
 
@@ -91,7 +93,7 @@ export async function getUploadRecords(
   const placeholders = driveFileIds.map(() => '?').join(',');
   const results = db
     .prepare(
-      `SELECT drive_file_id, photos_media_item_id, uploaded_at, file_name, mime_type
+      `SELECT drive_file_id, photos_media_item_id, uploaded_at, file_name, mime_type, file_size
        FROM uploads
        WHERE user_email = ? AND drive_file_id IN (${placeholders})`
     )
@@ -101,6 +103,7 @@ export async function getUploadRecords(
     uploaded_at: string;
     file_name: string;
     mime_type: string;
+    file_size: number | null;
   }>;
 
   const recordMap = new Map<string, UploadRecord | null>();
@@ -117,6 +120,7 @@ export async function getUploadRecords(
       uploadedAt: row.uploaded_at,
       fileName: row.file_name,
       mimeType: row.mime_type,
+      fileSize: row.file_size || undefined,
     });
   }
 
@@ -140,33 +144,37 @@ export async function recordUpload(
   driveFileId: string,
   photosMediaItemId: string,
   fileName: string,
-  mimeType: string
+  mimeType: string,
+  fileSize?: number
 ): Promise<void> {
   logger.info('Recording upload', {
     userEmail,
     driveFileId,
     photosMediaItemId,
     fileName,
+    fileSize,
   });
 
   const db = getDatabase();
 
   db.prepare(
-    `INSERT INTO uploads (user_email, drive_file_id, photos_media_item_id, uploaded_at, file_name, mime_type)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO uploads (user_email, drive_file_id, photos_media_item_id, uploaded_at, file_name, mime_type, file_size)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(user_email, drive_file_id)
      DO UPDATE SET
        photos_media_item_id = excluded.photos_media_item_id,
        uploaded_at = excluded.uploaded_at,
        file_name = excluded.file_name,
-       mime_type = excluded.mime_type`
+       mime_type = excluded.mime_type,
+       file_size = excluded.file_size`
   ).run(
     userEmail,
     driveFileId,
     photosMediaItemId,
     new Date().toISOString(),
     fileName,
-    mimeType
+    mimeType,
+    fileSize || null
   );
 
   logger.info('Upload recorded successfully', {
@@ -186,6 +194,7 @@ export async function recordUploads(
     photosMediaItemId: string;
     fileName: string;
     mimeType: string;
+    fileSize?: number;
   }>
 ): Promise<void> {
   logger.info('Recording batch uploads', {
@@ -202,14 +211,15 @@ export async function recordUploads(
 
   const transaction = db.transaction(() => {
     const insert = db.prepare(
-      `INSERT INTO uploads (user_email, drive_file_id, photos_media_item_id, uploaded_at, file_name, mime_type)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO uploads (user_email, drive_file_id, photos_media_item_id, uploaded_at, file_name, mime_type, file_size)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_email, drive_file_id)
        DO UPDATE SET
          photos_media_item_id = excluded.photos_media_item_id,
          uploaded_at = excluded.uploaded_at,
          file_name = excluded.file_name,
-         mime_type = excluded.mime_type`
+         mime_type = excluded.mime_type,
+         file_size = excluded.file_size`
     );
 
     for (const upload of uploads) {
@@ -219,7 +229,8 @@ export async function recordUploads(
         upload.photosMediaItemId,
         uploadedAt,
         upload.fileName,
-        upload.mimeType
+        upload.mimeType,
+        upload.fileSize || null
       );
     }
   });
@@ -298,18 +309,25 @@ export async function deleteUploadRecords(
 }
 
 /**
- * Get count of uploaded files for a user
+ * Get statistics of uploaded files for a user
  */
-export async function getUploadedFileCount(userEmail: string): Promise<number> {
+export async function getUploadsStats(
+  userEmail: string
+): Promise<{ count: number; totalSize: number }> {
   const db = getDatabase();
 
   const result = db
-    .prepare('SELECT COUNT(*) as count FROM uploads WHERE user_email = ?')
-    .get(userEmail) as { count: number };
+    .prepare(
+      'SELECT COUNT(*) as count, SUM(file_size) as totalSize FROM uploads WHERE user_email = ?'
+    )
+    .get(userEmail) as { count: number; totalSize: number | null };
 
-  const count = result.count;
+  const stats = {
+    count: result.count || 0,
+    totalSize: result.totalSize || 0,
+  };
 
-  logger.debug('Retrieved uploaded file count', { userEmail, count });
+  logger.debug('Retrieved uploads stats', { userEmail, stats });
 
-  return count;
+  return stats;
 }

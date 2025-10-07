@@ -1,11 +1,54 @@
-import { auth } from '@/auth';
-import Link from 'next/link';
+'use client';
 
-export default async function Home() {
-  const session = await auth();
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useSession } from 'next-auth/react';
+
+// Helper function to format bytes
+function formatBytes(bytes: number, decimals = 2) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+interface Stats {
+  total: number;
+  pending: number;
+  uploading: number;
+  completed: number;
+  failed: number;
+  uploaded: number;
+  storageUsed: number;
+}
+
+export default function Home() {
+  const { data: session } = useSession();
+  const [stats, setStats] = useState<Stats | null>(null);
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const response = await fetch('/api/stats');
+        if (response.ok) {
+          const data = await response.json();
+          setStats(data);
+        }
+      } catch (error) {
+        console.error('Error fetching stats:', error);
+      }
+    }
+
+    fetchStats();
+    const interval = setInterval(fetchStats, 5000); // Refresh every 5 seconds
+
+    return () => clearInterval(interval);
+  }, []);
 
   if (!session?.user) {
-    return null; // Middleware will redirect to sign-in
+    return null; // Or a loading spinner
   }
 
   return (
@@ -16,7 +59,7 @@ export default async function Home() {
           Welcome back, {session.user.name?.split(' ')[0]}! 👋
         </h1>
         <p className="text-blue-100">
-          Upload files from your Google Drive to Google Photos seamlessly.
+          Here is an overview of your upload activity.
         </p>
       </div>
 
@@ -24,7 +67,9 @@ export default async function Home() {
       <div className="grid gap-6 md:grid-cols-3">
         <div className="rounded-lg bg-white p-6 shadow-md transition-shadow hover:shadow-lg">
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-500">Total Files</h3>
+            <h3 className="text-sm font-medium text-gray-500">
+              Files in Queue
+            </h3>
             <svg
               className="h-8 w-8 text-blue-500"
               fill="none"
@@ -39,8 +84,12 @@ export default async function Home() {
               />
             </svg>
           </div>
-          <p className="text-3xl font-bold text-gray-900">0</p>
-          <p className="mt-1 text-xs text-gray-500">Ready to upload</p>
+          <p className="text-3xl font-bold text-gray-900">
+            {stats ? stats.total : '0'}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            {stats ? `${stats.pending} pending` : ''}
+          </p>
         </div>
 
         <div className="rounded-lg bg-white p-6 shadow-md transition-shadow hover:shadow-lg">
@@ -60,7 +109,9 @@ export default async function Home() {
               />
             </svg>
           </div>
-          <p className="text-3xl font-bold text-gray-900">0</p>
+          <p className="text-3xl font-bold text-gray-900">
+            {stats ? stats.uploaded : '0'}
+          </p>
           <p className="mt-1 text-xs text-gray-500">Successfully synced</p>
         </div>
 
@@ -81,7 +132,9 @@ export default async function Home() {
               />
             </svg>
           </div>
-          <p className="text-3xl font-bold text-gray-900">0 MB</p>
+          <p className="text-3xl font-bold text-gray-900">
+            {stats ? formatBytes(stats.storageUsed) : '0 MB'}
+          </p>
           <p className="mt-1 text-xs text-gray-500">Transferred</p>
         </div>
       </div>
@@ -119,7 +172,12 @@ export default async function Home() {
             </div>
           </Link>
 
-          <button className="flex items-center gap-4 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-green-500 hover:bg-green-50">
+          <a
+            href="https://photos.google.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-4 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-green-500 hover:bg-green-50"
+          >
             <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100">
               <svg
                 className="h-6 w-6 text-green-600"
@@ -141,36 +199,7 @@ export default async function Home() {
                 Open your Google Photos library
               </p>
             </div>
-          </button>
-        </div>
-      </div>
-
-      {/* Info Banner */}
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-6">
-        <div className="flex items-start gap-3">
-          <svg
-            className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <div>
-            <h3 className="font-semibold text-blue-900">
-              Phase 1 Complete: Authentication Ready
-            </h3>
-            <p className="mt-1 text-sm text-blue-800">
-              Your account is connected and ready. The file browser and upload
-              functionality will be added in the next phases. Use the sidebar to
-              explore your Google Drive folders.
-            </p>
-          </div>
+          </a>
         </div>
       </div>
     </div>

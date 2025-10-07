@@ -3,6 +3,8 @@ import path from 'path';
 import { createLogger } from '@/lib/logger';
 import fs from 'fs';
 
+import { runMigrations } from './migration';
+
 const logger = createLogger('sqlite-db');
 
 const DB_PATH = path.join(process.cwd(), 'data', 'app.db');
@@ -33,6 +35,9 @@ export function getDatabase(): Database.Database {
 
   // Initialize schema
   initializeSchema(db);
+
+  // Run migrations
+  runMigrations(db);
 
   logger.info('SQLite database initialized successfully', { dbPath: DB_PATH });
 
@@ -110,6 +115,7 @@ function initializeSchema(database: Database.Database): void {
       uploaded_at TEXT NOT NULL,
       file_name TEXT NOT NULL,
       mime_type TEXT NOT NULL,
+      file_size INTEGER DEFAULT 0,
       UNIQUE(user_email, drive_file_id)
     );
 
