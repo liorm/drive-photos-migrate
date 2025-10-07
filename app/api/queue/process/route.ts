@@ -15,10 +15,16 @@ async function handlePOST(_request: NextRequest) {
   // Get session
   const session = await auth();
 
-  if (!session?.accessToken || !session?.user?.email) {
-    logger.warn('Unauthorized request - No access token', { requestId });
+  if (
+    !session?.accessToken ||
+    !session?.refreshToken ||
+    !session?.user?.email
+  ) {
+    logger.warn('Unauthorized request - No access token or refresh token', {
+      requestId,
+    });
     return NextResponse.json(
-      { error: 'Unauthorized - No access token' },
+      { error: 'Unauthorized - No access token or refresh token' },
       { status: 401 }
     );
   }
@@ -36,14 +42,15 @@ async function handlePOST(_request: NextRequest) {
   }
 
   const userEmail = session.user.email;
-  const accessToken = session.accessToken;
-
   logger.info('Process queue request', { requestId, userEmail });
 
   // Start processing queue in the background
   // Don't await - let it run asynchronously
   uploadsManager
-    .startProcessing(userEmail, accessToken, session.refreshToken)
+    .startProcessing(userEmail, {
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+    })
     .catch(error => {
       logger.error('Error processing queue', error, {
         requestId,

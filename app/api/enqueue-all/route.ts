@@ -8,7 +8,11 @@ const logger = createLogger('api:enqueue-all');
 
 async function handlePOST(request: NextRequest) {
   const session = await auth();
-  if (!session?.accessToken || !session?.user?.email) {
+  if (
+    !session?.accessToken ||
+    !session?.refreshToken ||
+    !session?.user?.email
+  ) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -29,7 +33,7 @@ async function handlePOST(request: NextRequest) {
   // Start the operation in the background, don't await it
   enqueueAll(session.user.email, folderId, folderName, {
     accessToken: session.accessToken,
-    refreshToken: session.refreshToken,
+    refreshToken: session.refreshToken!,
   });
 
   return NextResponse.json({

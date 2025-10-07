@@ -3,13 +3,14 @@ import { syncFolderToCache, getCachedFolderPage } from '@/lib/drive-cache';
 import { getAllCachedFileIds } from '@/lib/db';
 import uploadsManager from '@/lib/uploads-manager';
 import operationStatusManager from '@/lib/operation-status';
+import { GoogleAuthContext } from '@/types/auth';
 
 import { getFolderPath } from '@/lib/google-drive';
 
 async function discoverFolders(
   userEmail: string,
   folderId: string,
-  auth: { accessToken: string; refreshToken?: string },
+  auth: GoogleAuthContext,
   visited: Set<string>,
   folderList: { id: string; name: string }[]
 ) {
@@ -38,7 +39,7 @@ async function discoverFolders(
 async function _performEnqueueAll(
   userEmail: string,
   folderId: string,
-  auth: { accessToken: string; refreshToken?: string },
+  auth: GoogleAuthContext,
   operationId: string
 ) {
   operationStatusManager.updateOperation(operationId, {
@@ -92,7 +93,7 @@ export function enqueueAll(
   userEmail: string,
   folderId: string,
   folderName: string,
-  auth: { accessToken: string; refreshToken?: string }
+  auth: GoogleAuthContext
 ) {
   return trackOperation(
     OperationType.LONG_WRITE,

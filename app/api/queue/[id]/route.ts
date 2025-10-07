@@ -19,10 +19,16 @@ async function handleDELETE(
   // Get session
   const session = await auth();
 
-  if (!session?.accessToken || !session?.user?.email) {
-    logger.warn('Unauthorized request - No access token', { requestId });
+  if (
+    !session?.accessToken ||
+    !session?.refreshToken ||
+    !session?.user?.email
+  ) {
+    logger.warn('Unauthorized request - No access token or refresh token', {
+      requestId,
+    });
     return NextResponse.json(
-      { error: 'Unauthorized - No access token' },
+      { error: 'Unauthorized - No access token or refresh token' },
       { status: 401 }
     );
   }

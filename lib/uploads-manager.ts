@@ -254,10 +254,8 @@ class UploadsManager {
    */
   async startProcessing(
     userEmail: string,
-    accessToken: string,
-    refreshToken?: string
+    auth: GoogleAuthContext
   ): Promise<void> {
-    const refreshTok = refreshToken;
     await this.initialize();
 
     // Check if already processing for this user
@@ -369,7 +367,7 @@ class UploadsManager {
 
         try {
           const createResults = await batchCreateMediaItems({
-            auth: { accessToken, refreshToken: refreshTok },
+            auth,
             items: batchItems.map(item => ({
               uploadToken: item.uploadToken,
               fileName: item.queueItem.fileName,
@@ -532,7 +530,7 @@ class UploadsManager {
                   });
 
                   const buffer = await downloadDriveFile({
-                    auth: { accessToken, refreshToken: refreshTok },
+                    auth,
                     fileId: item.driveFileId,
                     signal: controller.signal,
                   });
@@ -553,7 +551,7 @@ class UploadsManager {
                   });
 
                   const uploadToken = await this.uploadBytes({
-                    accessToken,
+                    accessToken: auth.accessToken,
                     fileBuffer: buffer,
                     fileName: item.fileName,
                     mimeType: item.mimeType,

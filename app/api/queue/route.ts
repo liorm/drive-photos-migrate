@@ -6,6 +6,7 @@ import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
 import operationStatusManager, { OperationType } from '@/lib/operation-status';
 import uploadsManager from '@/lib/uploads-manager';
+import { GoogleAuthContext } from '@/types/auth';
 
 const logger = createLogger('api:queue');
 
@@ -21,7 +22,7 @@ async function processFilesAsync(
   operationId: string,
   userEmail: string,
   fileIds: string[],
-  authContext: { accessToken: string; refreshToken?: string },
+  authContext: GoogleAuthContext,
   requestId: string
 ): Promise<void> {
   try {
@@ -64,10 +65,16 @@ async function handleGET(_request: NextRequest) {
   // Get session
   const session = await auth();
 
-  if (!session?.accessToken || !session?.user?.email) {
-    logger.warn('Unauthorized request - No access token', { requestId });
+  if (
+    !session?.accessToken ||
+    !session?.refreshToken ||
+    !session?.user?.email
+  ) {
+    logger.warn('Unauthorized request - No access token or refresh token', {
+      requestId,
+    });
     return NextResponse.json(
-      { error: 'Unauthorized - No access token' },
+      { error: 'Unauthorized - No access token or refresh token' },
       { status: 401 }
     );
   }
@@ -114,10 +121,16 @@ async function handlePOST(request: NextRequest) {
   // Get session
   const session = await auth();
 
-  if (!session?.accessToken || !session?.user?.email) {
-    logger.warn('Unauthorized request - No access token', { requestId });
+  if (
+    !session?.accessToken ||
+    !session?.refreshToken ||
+    !session?.user?.email
+  ) {
+    logger.warn('Unauthorized request - No access token or refresh token', {
+      requestId,
+    });
     return NextResponse.json(
-      { error: 'Unauthorized - No access token' },
+      { error: 'Unauthorized - No access token or refresh token' },
       { status: 401 }
     );
   }
@@ -213,7 +226,7 @@ async function handlePOST(request: NextRequest) {
       fileIds,
       {
         accessToken: session.accessToken,
-        refreshToken: session.refreshToken,
+        refreshToken: session.refreshToken!,
       },
       requestId
     );
