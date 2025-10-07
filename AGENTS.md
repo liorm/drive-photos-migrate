@@ -4,7 +4,29 @@
 
 This is a Next.js web application designed to help users upload files from their Google Drive to their Google Photos library. It features a secure OAuth 2.0 authentication flow with Google, allows users to browse their Google Drive files, and prevents duplicate uploads by keeping track of already uploaded files.
 
-The project is built with Next.js 15 (using the App Router and React 19), TypeScript, and styled with Tailwind CSS v4. It utilizes the Google Drive API (read-only) and Google Photos Library API (append-only). For local development, it uses `lowdb`, a simple JSON file-based database.
+The project is built with Next.js 15 (using the App Router and React 19), TypeScript, and styled with Tailwind CSS v4. It utilizes the Google Drive API (read-only) and Google Photos Library API (append-only). For local development, it uses `better-sqlite3` for a local SQLite database.
+
+## High-Level Architecture
+
+This Next.js application follows the App Router paradigm. The architecture can be broken down as follows:
+
+*   **Frontend:**
+    *   Located in `app/` and `components/`.
+    *   `app/` contains the pages and layouts, defining the routes and UI structure.
+    *   `components/` holds reusable React components used across the application, promoting a modular and maintainable frontend.
+*   **Backend (API Routes):**
+    *   Located in `app/api/`.
+    *   These are server-side endpoints that handle the application's logic, such as authenticating with Google, interacting with the Google Drive and Google Photos APIs, and managing the upload queue.
+*   **Business Logic & Services:**
+    *   Located in the `lib/` directory.
+    *   This directory contains the core application logic, separated from the frontend and API routes. It includes services for interacting with Google APIs (`google-drive.ts`, `google-photos.ts`), managing the database (`sqlite-db.ts`, `uploads-db.ts`), handling authentication (`auth.ts`), and managing the upload queue (`uploads-manager.ts`).
+*   **Database:**
+    *   The application uses a local SQLite database (`data/app.db`) managed by `better-sqlite3`.
+    *   The `lib/sqlite-db.ts` file handles the database connection and schema initialization.
+*   **Styling:**
+    *   The application is styled using Tailwind CSS v4, configured in `tailwind.config.ts`.
+*   **Types:**
+    *   TypeScript types are defined in the `types/` directory, providing type safety across the application.
 
 ## Building and Running
 
