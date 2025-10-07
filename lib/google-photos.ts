@@ -336,7 +336,15 @@ export async function batchUploadFiles(
         }
       );
 
-      const BATCH_SIZE = 5;
+      // Batch size for createMediaItems in batchUploadFiles. Controls how many
+      // media items are created in a single API call. Google Photos API allows up to 50.
+      // This value can be tuned via PHOTOS_UPLOAD_BATCH_SIZE env var. Keep <= 50.
+      //
+      // Env: PHOTOS_UPLOAD_BATCH_SIZE (integer, max 50)
+      const BATCH_SIZE = Math.max(
+        1,
+        Math.min(50, parseInt(process.env.PHOTOS_UPLOAD_BATCH_SIZE || '5', 10))
+      );
       let completedCount = 0;
       const results: Array<{
         driveFileId: string;

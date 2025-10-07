@@ -307,7 +307,16 @@ class UploadsManager {
       // Concurrency settings
       const DEFAULT_CONCURRENCY =
         parseInt(process.env.QUEUE_CONCURRENCY || '5', 10) || 5;
-      const MAX_CONCURRENCY = 20;
+      // Maximum concurrency allowed for processing workers. Can be tuned via
+      // the QUEUE_MAX_CONCURRENCY env var. This caps the number of concurrent
+      // workers that will process queue items for a single user. Use this to
+      // limit parallel downloads/uploads and control API usage.
+      //
+      // Env: QUEUE_MAX_CONCURRENCY (integer)
+      const MAX_CONCURRENCY = Math.max(
+        1,
+        parseInt(process.env.QUEUE_MAX_CONCURRENCY || '10', 10)
+      );
       const concurrency = Math.max(
         1,
         Math.min(
@@ -329,7 +338,17 @@ class UploadsManager {
       this.activeControllers.set(userEmail, controller);
 
       // Batch settings for createMediaItems
-      const BATCH_SIZE = 30; // Google Photos API maximum
+      // Batch settings for createMediaItems
+      // Number of media items to include in a single call to
+      // mediaItems:batchCreate. Google Photos API allows up to 50 items per
+      // request; this value can be tuned via the PHOTOS_MEDIA_BATCH_SIZE env
+      // var. Keep it <= 50.
+      //
+      // Env: PHOTOS_MEDIA_BATCH_SIZE (integer, max 50)
+      const BATCH_SIZE = Math.max(
+        1,
+        Math.min(50, parseInt(process.env.PHOTOS_MEDIA_BATCH_SIZE || '30', 10))
+      );
       const pendingBatch: Array<{
         queueItem: QueueItem;
         uploadToken: string;
