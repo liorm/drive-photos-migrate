@@ -123,7 +123,7 @@ export async function syncFolderToCache(
 export async function clearFolderCache(
   userEmail: string,
   folderId: string,
-  accessToken: string
+  auth: GoogleAuthContext
 ): Promise<void> {
   logger.info('Clearing folder cache', { userEmail, folderId });
 
@@ -131,7 +131,7 @@ export async function clearFolderCache(
 
   // Also clear sync status cache for this folder and all parents
   const { clearSyncStatusCacheForFolder } = await import('./sync-status');
-  await clearSyncStatusCacheForFolder(userEmail, folderId, accessToken);
+  await clearSyncStatusCacheForFolder(userEmail, folderId, auth);
 
   logger.info('Folder cache cleared successfully', { userEmail, folderId });
 }

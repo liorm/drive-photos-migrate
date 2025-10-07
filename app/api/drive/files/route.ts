@@ -5,16 +5,17 @@ import {
   isFolderCached,
   getCachedFolderPage,
   syncFolderToCache,
-  clearFolderCache,
 } from '@/lib/drive-cache';
 import { getUploadRecords } from '@/lib/uploads-db';
 import {
   getCachedFolderSyncStatus,
   calculateFolderSyncStatus,
+  clearSyncStatusCacheForFolder,
 } from '@/lib/sync-status';
 import { getQueuedFileIds } from '@/lib/upload-queue-db';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
+import { clearFolderFromCache } from '@/lib/db';
 
 const logger = createLogger('api:drive:files');
 
@@ -82,7 +83,11 @@ async function handleGET(request: NextRequest) {
         userEmail,
         folderId,
       });
-      await clearFolderCache(userEmail, folderId, session.accessToken);
+      clearFolderFromCache(userEmail, folderId);
+      await clearSyncStatusCacheForFolder(userEmail, folderId, {
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+      });
     }
 
     // Sync all files from Drive API to cache

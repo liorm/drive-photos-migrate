@@ -10,6 +10,7 @@ import { getDriveFile } from '@/lib/google-drive';
 import { GoogleAuthContext } from '@/types/auth';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
+import { clearFolderFromCache } from '@/lib/db';
 
 const logger = createLogger('api:photos:upload');
 
@@ -208,11 +209,8 @@ async function handlePOST(request: NextRequest) {
     });
 
     // Clear sync status cache for this folder and parents
-    await clearSyncStatusCacheForFolder(
-      userEmail,
-      folderId,
-      session.accessToken
-    );
+    clearFolderFromCache(userEmail, folderId);
+    await clearSyncStatusCacheForFolder(userEmail, folderId, authContext);
 
     logger.info('Sync status cache cleared', {
       requestId,

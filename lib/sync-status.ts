@@ -5,13 +5,13 @@ import {
   cacheFileSyncStatus as saveFileSyncStatus,
   cacheFolderSyncStatus as saveFolderSyncStatus,
   clearFilesSyncStatusCache as clearFilesCache,
-  clearFolderSyncStatusCache as clearFolderCache,
   clearFoldersSyncStatusCache as clearFoldersCache,
   clearAllSyncStatusCache as clearAllCache,
   getCachedFolder,
 } from './db';
 import { isFileUploaded, getUploadRecords } from './uploads-db';
 import { createLogger } from '@/lib/logger';
+import { GoogleAuthContext } from '@/types/auth';
 
 const logger = createLogger('sync-status');
 
@@ -191,22 +191,15 @@ export async function calculateFolderSyncStatus(
 export async function clearSyncStatusCacheForFolder(
   userEmail: string,
   folderId: string,
-  accessToken: string
+  auth: GoogleAuthContext
 ): Promise<void> {
   logger.info('Clearing sync status cache for folder and parents', {
     userEmail,
     folderId,
   });
 
-  // Clear cache for this folder
-  clearFolderCache(userEmail, folderId);
-
   // Get parent folders by traversing up the folder hierarchy
-  const parentFolderIds = await getParentFolderIds(
-    userEmail,
-    folderId,
-    accessToken
-  );
+  const parentFolderIds = await getParentFolderIds(userEmail, folderId, auth);
 
   // Clear cache for all parent folders
   if (parentFolderIds.length > 0) {
@@ -230,13 +223,13 @@ export async function clearSyncStatusCacheForFolder(
 async function getParentFolderIds(
   userEmail: string,
   folderId: string,
-  accessToken: string
+  auth: GoogleAuthContext
 ): Promise<string[]> {
   // Import here to avoid circular dependency
   const { getFolderPath } = await import('./google-drive');
 
   const folderPath = await getFolderPath({
-    auth: { accessToken },
+    auth,
     folderId,
   });
 
