@@ -82,10 +82,15 @@ export async function getCacheStats(userEmail: string): Promise<{
        FROM cached_files cf
        JOIN cached_folders cfo ON cf.cached_folder_id = cfo.id
        WHERE cfo.user_email = ? 
-       AND (cf.mime_type LIKE 'application/%' OR cf.mime_type LIKE 'text/%'
-            OR cf.mime_type IN ('application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                                'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                                'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'))`
+       AND (cf.mime_type LIKE 'text/%' OR cf.mime_type IN (
+              'application/pdf',
+              'application/msword',
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              'application/vnd.ms-excel',
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              'application/vnd.ms-powerpoint',
+              'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+            ))`
     )
     .get(userEmail) as { count: number };
 
