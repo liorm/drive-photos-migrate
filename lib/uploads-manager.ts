@@ -867,7 +867,7 @@ class UploadsManager {
         headers: {
           Authorization: `Bearer ${auth.accessToken}`,
           'Content-Type': 'application/octet-stream',
-          'X-Goog-Upload-File-Name': fileName,
+          'X-Goog-Upload-File-Name': encodeURIComponent(fileName),
           'X-Goog-Upload-Protocol': 'raw',
         },
         body: fileBuffer as unknown as BodyInit,
