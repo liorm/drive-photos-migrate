@@ -42,12 +42,14 @@ async function handlePOST(_request: NextRequest) {
 
   // Start processing queue in the background
   // Don't await - let it run asynchronously
-  uploadsManager.startProcessing(userEmail, accessToken).catch(error => {
-    logger.error('Error processing queue', error, {
-      requestId,
-      userEmail,
+  uploadsManager
+    .startProcessing(userEmail, accessToken, session.refreshToken)
+    .catch(error => {
+      logger.error('Error processing queue', error, {
+        requestId,
+        userEmail,
+      });
     });
-  });
 
   logger.info('Queue processing started', { requestId, userEmail });
 

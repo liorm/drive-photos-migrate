@@ -8,6 +8,7 @@ import {
 } from './upload-queue-db';
 import { getFileMetadataFromDriveCache } from './db';
 import { getDriveFile } from './google-drive';
+import { GoogleAuthContext } from '@/types/auth';
 import { downloadDriveFile, batchCreateMediaItems } from './google-photos';
 import { recordUpload } from './uploads-db';
 import { clearFileSyncStatusCache } from './sync-status';
@@ -72,12 +73,17 @@ class UploadsManager {
    * Add files to the upload queue
    * Consolidates logic from POST /api/queue
    */
-  async addToQueue(
-    userEmail: string,
-    accessToken: string,
-    fileIds: string[],
-    operationId?: string
-  ): Promise<{
+  async addToQueue({
+    userEmail,
+    auth,
+    fileIds,
+    operationId,
+  }: {
+    userEmail: string;
+    auth: GoogleAuthContext;
+    fileIds: string[];
+    operationId?: string;
+  }): Promise<{
     added: Array<{
       driveFileId: string;
       fileName: string;
@@ -154,7 +160,10 @@ class UploadsManager {
                 fileId,
               });
 
-              const fileMetadata = await getDriveFile(accessToken, fileId);
+              const fileMetadata = await getDriveFile({
+                auth,
+                fileId,
+              });
 
               if (!fileMetadata.name || !fileMetadata.mimeType) {
                 logger.warn('File metadata incomplete, skipping', {
@@ -246,7 +255,12 @@ class UploadsManager {
    * Start processing the upload queue for a user
    * Consolidates logic from queue-processor.ts with batching support
    */
-  async startProcessing(userEmail: string, accessToken: string): Promise<void> {
+  async startProcessing(
+    userEmail: string,
+    accessToken: string,
+    refreshToken?: string
+  ): Promise<void> {
+    const refreshTok = refreshToken;
     await this.initialize();
 
     // Check if already processing for this user
@@ -366,14 +380,14 @@ class UploadsManager {
         });
 
         try {
-          const createResults = await batchCreateMediaItems(
-            accessToken,
-            batchItems.map(item => ({
+          const createResults = await batchCreateMediaItems({
+            auth: { accessToken, refreshToken: refreshTok },
+            items: batchItems.map(item => ({
               uploadToken: item.uploadToken,
               fileName: item.queueItem.fileName,
             })),
-            operationId
-          );
+            operationId,
+          });
 
           // Process results and update database
           for (let i = 0; i < createResults.length; i++) {
@@ -557,12 +571,11 @@ class UploadsManager {
                     fileName: item.fileName,
                   });
 
-                  const buffer = await downloadDriveFile(
-                    accessToken,
-                    item.driveFileId,
-                    undefined,
-                    controller.signal
-                  );
+                  const buffer = await downloadDriveFile({
+                    auth: { accessToken, refreshToken: refreshTok },
+                    fileId: item.driveFileId,
+                    signal: controller.signal,
+                  });
 
                   logger.debug('File downloaded successfully', {
                     userEmail,
@@ -579,14 +592,14 @@ class UploadsManager {
                     fileName: item.fileName,
                   });
 
-                  const uploadToken = await this.uploadBytes(
+                  const uploadToken = await this.uploadBytes({
                     accessToken,
-                    buffer,
-                    item.fileName,
-                    item.mimeType,
+                    fileBuffer: buffer,
+                    fileName: item.fileName,
+                    mimeType: item.mimeType,
                     operationId,
-                    controller.signal
-                  );
+                    signal: controller.signal,
+                  });
 
                   logger.debug('Upload token received', {
                     userEmail,
@@ -835,14 +848,21 @@ class UploadsManager {
    * Upload file bytes to Photos API and get upload token
    * Helper method extracted from google-photos.ts
    */
-  private async uploadBytes(
-    accessToken: string,
-    fileBuffer: Buffer,
-    fileName: string,
-    _mimeType: string,
-    operationId?: string,
-    signal?: AbortSignal
-  ): Promise<string> {
+  private async uploadBytes({
+    accessToken,
+    fileBuffer,
+    fileName,
+    mimeType: _mimeType,
+    operationId,
+    signal,
+  }: {
+    accessToken: string;
+    fileBuffer: Buffer;
+    fileName: string;
+    mimeType: string;
+    operationId?: string;
+    signal?: AbortSignal;
+  }): Promise<string> {
     logger.debug('Uploading bytes to Photos API', {
       fileName,
       size: fileBuffer.length,

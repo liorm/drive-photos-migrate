@@ -11,6 +11,8 @@ import operationStatusManager, {
 } from '@/lib/operation-status';
 import { getDriveFile } from './google-drive';
 import { retryWithBackoff } from '@/lib/retry';
+import { withGoogleAuthRetry } from '@/lib/token-refresh';
+import { GoogleAuthContext } from '@/types/auth';
 import backoffController from './backoff-controller';
 
 const logger = createLogger('google-photos');
@@ -23,33 +25,42 @@ const PHOTOS_API_BASE = 'https://photoslibrary.googleapis.com/v1';
  * 2. Upload file bytes
  * 3. Create media item from upload token
  */
-export async function uploadFileToPhotos(
-  accessToken: string,
-  fileBuffer: Buffer,
-  fileName: string,
-  mimeType: string,
-  operationId?: string,
-  signal?: AbortSignal
-): Promise<string> {
+interface UploadFileToPhotosParams {
+  auth: GoogleAuthContext;
+  fileBuffer: Buffer;
+  fileName: string;
+  mimeType: string;
+  operationId?: string;
+  signal?: AbortSignal;
+}
+
+export async function uploadFileToPhotos({
+  auth,
+  fileBuffer,
+  fileName,
+  mimeType,
+  operationId,
+  signal,
+}: UploadFileToPhotosParams): Promise<string> {
   logger.info('Starting file upload to Photos', { fileName, mimeType });
 
   // Step 1: Upload bytes to get upload token
-  const uploadToken = await uploadBytes(
-    accessToken,
+  const uploadToken = await uploadBytes({
+    auth,
     fileBuffer,
     fileName,
     mimeType,
     operationId,
-    signal
-  );
+    signal,
+  });
 
   // Step 2: Create media item from upload token
-  const mediaItemId = await createMediaItemSingle(
-    accessToken,
+  const mediaItemId = await createMediaItemSingle({
+    auth,
     uploadToken,
     fileName,
-    operationId
-  );
+    operationId,
+  });
 
   logger.info('File uploaded successfully to Photos', {
     fileName,
@@ -62,55 +73,42 @@ export async function uploadFileToPhotos(
 /**
  * Step 1: Upload file bytes to Photos API and get upload token
  */
-async function uploadBytes(
-  accessToken: string,
-  fileBuffer: Buffer,
-  fileName: string,
-  _mimeType: string,
-  operationId?: string,
-  signal?: AbortSignal
-): Promise<string> {
+interface UploadBytesParams {
+  auth: GoogleAuthContext;
+  fileBuffer: Buffer;
+  fileName: string;
+  mimeType: string;
+  operationId?: string;
+  signal?: AbortSignal;
+}
+
+async function uploadBytes({
+  auth,
+  fileBuffer,
+  fileName,
+  mimeType: _mimeType,
+  operationId,
+  signal,
+}: UploadBytesParams): Promise<string> {
   logger.debug('Uploading bytes to Photos API', {
     fileName,
     size: fileBuffer.length,
   });
 
-  const response = await fetchWithRetry(
-    `${PHOTOS_API_BASE}/uploads`,
-    {
+  const { result: response } = await withGoogleAuthRetry(auth, async token => {
+    const res = await fetchWithRetry(`${PHOTOS_API_BASE}/uploads`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/octet-stream',
         'X-Goog-Upload-File-Name': fileName,
         'X-Goog-Upload-Protocol': 'raw',
       },
       body: fileBuffer as unknown as BodyInit,
-      // forward abort signal if provided
       signal,
-    },
-    {
-      maxRetries: 3,
-      onRetry: (error, attempt, delay) => {
-        logger.warn('Retrying upload bytes', {
-          fileName,
-          attempt,
-          delay,
-          error: error.message,
-        });
-
-        // Update operation status if tracking
-        if (operationId) {
-          operationStatusManager.retryOperation(
-            operationId,
-            `Upload failed: ${error.message}`,
-            attempt,
-            3
-          );
-        }
-      },
-    }
-  );
+    });
+    return res;
+  });
 
   const uploadToken = await response.text();
 
@@ -125,12 +123,19 @@ async function uploadBytes(
 /**
  * Step 2: Create media item from upload token (single item)
  */
-async function createMediaItemSingle(
-  accessToken: string,
-  uploadToken: string,
-  fileName: string,
-  operationId?: string
-): Promise<string> {
+interface CreateMediaItemSingleParams {
+  auth: GoogleAuthContext;
+  uploadToken: string;
+  fileName: string;
+  operationId?: string;
+}
+
+async function createMediaItemSingle({
+  auth,
+  uploadToken,
+  fileName,
+  operationId,
+}: CreateMediaItemSingleParams): Promise<string> {
   logger.debug('Creating media item from upload token', { fileName });
 
   const requestBody: CreateMediaItemRequest = {
@@ -144,39 +149,20 @@ async function createMediaItemSingle(
     ],
   };
 
-  const response = await fetchWithRetry(
-    `${PHOTOS_API_BASE}/mediaItems:batchCreate`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-      // createMediaItem is fast, no signal forwarded here
-    },
-    {
-      maxRetries: 3,
-      onRetry: (error, attempt, delay) => {
-        logger.warn('Retrying create media item', {
-          fileName,
-          attempt,
-          delay,
-          error: error.message,
-        });
-
-        // Update operation status if tracking
-        if (operationId) {
-          operationStatusManager.retryOperation(
-            operationId,
-            `Create media item failed: ${error.message}`,
-            attempt,
-            3
-          );
-        }
-      },
-    }
-  );
+  const { result: response } = await withGoogleAuthRetry(auth, async token => {
+    const res = await fetchWithRetry(
+      `${PHOTOS_API_BASE}/mediaItems:batchCreate`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      }
+    );
+    return res;
+  });
 
   const result: CreateMediaItemResponse = await response.json();
 
@@ -206,11 +192,17 @@ async function createMediaItemSingle(
 /**
  * Batch create multiple media items from upload tokens
  */
-export async function batchCreateMediaItems(
-  accessToken: string,
-  items: Array<{ uploadToken: string; fileName: string }>,
-  operationId?: string
-): Promise<
+interface BatchCreateMediaItemsParams {
+  auth: GoogleAuthContext;
+  items: Array<{ uploadToken: string; fileName: string }>;
+  operationId?: string;
+}
+
+export async function batchCreateMediaItems({
+  auth,
+  items,
+  operationId,
+}: BatchCreateMediaItemsParams): Promise<
   Array<{
     success: boolean;
     mediaItemId?: string;
@@ -229,38 +221,20 @@ export async function batchCreateMediaItems(
     })),
   };
 
-  const response = await fetchWithRetry(
-    `${PHOTOS_API_BASE}/mediaItems:batchCreate`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    },
-    {
-      maxRetries: 3,
-      onRetry: (error, attempt, delay) => {
-        logger.warn('Retrying batch create media items', {
-          count: items.length,
-          attempt,
-          delay,
-          error: error.message,
-        });
-
-        // Update operation status if tracking
-        if (operationId) {
-          operationStatusManager.retryOperation(
-            operationId,
-            `Batch create media items failed: ${error.message}`,
-            attempt,
-            3
-          );
-        }
-      },
-    }
-  );
+  const { result: response } = await withGoogleAuthRetry(auth, async token => {
+    const res = await fetchWithRetry(
+      `${PHOTOS_API_BASE}/mediaItems:batchCreate`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      }
+    );
+    return res;
+  });
 
   const result: CreateMediaItemResponse = await response.json();
 
@@ -302,22 +276,28 @@ export async function batchCreateMediaItems(
  * Batch upload multiple files to Google Photos
  * Uploads are done sequentially to respect backoff, but createMediaItem calls are batched (5 items per batch)
  */
-export async function batchUploadFiles(
-  accessToken: string,
+interface BatchUploadFilesParams {
+  auth: GoogleAuthContext;
   files: Array<{
     buffer: Buffer;
     fileName: string;
     mimeType: string;
     driveFileId: string;
-  }>,
+  }>;
   onProgress?: (
     fileId: string,
     status: 'uploading' | 'success' | 'error',
     error?: string
-  ) => void,
-  // Optional: pass userEmail so batch uploads can coordinate per-user backoff
-  userEmail?: string
-): Promise<
+  ) => void;
+  userEmail?: string;
+}
+
+export async function batchUploadFiles({
+  auth,
+  files,
+  onProgress,
+  userEmail,
+}: BatchUploadFilesParams): Promise<
   Array<{
     driveFileId: string;
     photosMediaItemId?: string;
@@ -369,14 +349,14 @@ export async function batchUploadFiles(
         });
 
         try {
-          const createResults = await batchCreateMediaItems(
-            accessToken,
-            pendingBatch.map(item => ({
+          const createResults = await batchCreateMediaItems({
+            auth,
+            items: pendingBatch.map(item => ({
               uploadToken: item.uploadToken,
               fileName: item.fileName,
             })),
-            operationId
-          );
+            operationId,
+          });
 
           // Map results back to files
           createResults.forEach((result, index) => {
@@ -446,13 +426,13 @@ export async function batchUploadFiles(
           // Upload bytes to get upload token
           const uploadToken = await retryWithBackoff(
             async () =>
-              uploadBytes(
-                accessToken,
-                file.buffer,
-                file.fileName,
-                file.mimeType,
-                operationId
-              ),
+              uploadBytes({
+                auth,
+                fileBuffer: file.buffer,
+                fileName: file.fileName,
+                mimeType: file.mimeType,
+                operationId,
+              }),
             {
               maxRetries: 3,
               onRetry: (error, attempt, delay) => {
@@ -546,12 +526,19 @@ export async function batchUploadFiles(
 /**
  * Download a file from Google Drive
  */
-export async function downloadDriveFile(
-  accessToken: string,
-  fileId: string,
-  operationId?: string,
-  signal?: AbortSignal
-): Promise<Buffer> {
+interface DownloadDriveFileParams {
+  auth: GoogleAuthContext;
+  fileId: string;
+  operationId?: string;
+  signal?: AbortSignal;
+}
+
+export async function downloadDriveFile({
+  auth,
+  fileId,
+  operationId,
+  signal,
+}: DownloadDriveFileParams): Promise<Buffer> {
   logger.debug('Downloading file from Drive', { fileId });
 
   try {
@@ -559,7 +546,7 @@ export async function downloadDriveFile(
       `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
       {
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${auth.accessToken}`,
         },
         signal,
       },
@@ -630,7 +617,7 @@ export async function downloadDriveFile(
       );
 
       try {
-        const metadata = await getDriveFile(accessToken, fileId, operationId);
+        const metadata = await getDriveFile({ auth, fileId, operationId });
 
         // Minimal typing for the fields we may use from Drive metadata
         type DriveFileMetadata = { webContentLink?: string } & Record<
@@ -653,7 +640,7 @@ export async function downloadDriveFile(
             downloadUrl,
             {
               headers: {
-                Authorization: `Bearer ${accessToken}`,
+                Authorization: `Bearer ${auth.accessToken}`,
               },
               signal,
             },

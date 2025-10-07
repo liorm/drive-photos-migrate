@@ -21,16 +21,16 @@ async function processFilesAsync(
   operationId: string,
   userEmail: string,
   fileIds: string[],
-  accessToken: string,
+  authContext: { accessToken: string; refreshToken?: string },
   requestId: string
 ): Promise<void> {
   try {
-    const result = await uploadsManager.addToQueue(
+    const result = await uploadsManager.addToQueue({
       userEmail,
-      accessToken,
+      auth: authContext,
       fileIds,
-      operationId
-    );
+      operationId,
+    });
 
     logger.info('Async file processing completed', {
       requestId,
@@ -211,7 +211,10 @@ async function handlePOST(request: NextRequest) {
       operationId,
       userEmail,
       fileIds,
-      session.accessToken,
+      {
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+      },
       requestId
     );
 
@@ -226,11 +229,14 @@ async function handlePOST(request: NextRequest) {
 
   // For small operations (<10 files), process synchronously
   try {
-    const result = await uploadsManager.addToQueue(
+    const result = await uploadsManager.addToQueue({
       userEmail,
-      session.accessToken,
-      fileIds
-    );
+      auth: {
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+      },
+      fileIds,
+    });
 
     if (result.added.length === 0 && result.skipped.length === fileIds.length) {
       logger.warn('No files were added to queue', { requestId, userEmail });

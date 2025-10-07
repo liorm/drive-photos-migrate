@@ -7,6 +7,7 @@ import {
 } from './db';
 import { CachedPageResponse } from '@/types/drive-cache';
 import { listAllDriveFiles } from './google-drive';
+import { GoogleAuthContext } from '@/types/auth';
 import { createLogger } from '@/lib/logger';
 import { trackOperation, OperationType } from '@/lib/operation-status';
 
@@ -74,7 +75,7 @@ export async function getCachedFolderPage(
 export async function syncFolderToCache(
   userEmail: string,
   folderId: string,
-  accessToken: string
+  auth: GoogleAuthContext
 ): Promise<void> {
   return trackOperation(
     OperationType.LONG_READ,
@@ -84,11 +85,11 @@ export async function syncFolderToCache(
       const startTime = Date.now();
 
       // Fetch ALL files from Drive API (this logs progress internally)
-      const { files: allFiles, folders: allFolders } = await listAllDriveFiles(
-        accessToken,
+      const { files: allFiles, folders: allFolders } = await listAllDriveFiles({
+        auth,
         folderId,
-        operationId
-      );
+        operationId,
+      });
 
       logger.info('Drive files fetched, writing to cache', {
         userEmail,

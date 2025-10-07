@@ -91,7 +91,10 @@ async function handleGET(request: NextRequest) {
       userEmail,
       folderId,
     });
-    await syncFolderToCache(userEmail, folderId, session.accessToken);
+    await syncFolderToCache(userEmail, folderId, {
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+    });
   }
 
   // Get paginated data from cache
@@ -115,7 +118,13 @@ async function handleGET(request: NextRequest) {
   }
 
   // Get folder path for breadcrumbs
-  const folderPath = await getFolderPath(session.accessToken, folderId);
+  const folderPath = await getFolderPath({
+    auth: {
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+    },
+    folderId,
+  });
 
   // Get sync status for files and folders
   // For files: bulk check upload status

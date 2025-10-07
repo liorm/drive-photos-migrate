@@ -7,6 +7,7 @@ import {
   clearFileSyncStatusCache,
 } from '@/lib/sync-status';
 import { getDriveFile } from '@/lib/google-drive';
+import { GoogleAuthContext } from '@/types/auth';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
 
@@ -97,6 +98,11 @@ async function handlePOST(request: NextRequest) {
     driveFileId: string;
   }> = [];
 
+  const authContext: GoogleAuthContext = {
+    accessToken: session.accessToken,
+    refreshToken: session.refreshToken,
+  };
+
   for (const fileId of fileIds) {
     try {
       logger.debug('Fetching file metadata', {
@@ -106,7 +112,10 @@ async function handlePOST(request: NextRequest) {
       });
 
       // Get file metadata
-      const fileMetadata = await getDriveFile(session.accessToken, fileId);
+      const fileMetadata = await getDriveFile({
+        auth: authContext,
+        fileId,
+      });
 
       if (!fileMetadata.name || !fileMetadata.mimeType) {
         logger.warn('File metadata incomplete, skipping', {
@@ -125,7 +134,10 @@ async function handlePOST(request: NextRequest) {
         fileName: fileMetadata.name,
       });
 
-      const buffer = await downloadDriveFile(session.accessToken, fileId);
+      const buffer = await downloadDriveFile({
+        auth: authContext,
+        fileId,
+      });
 
       filesToUpload.push({
         buffer,
@@ -166,10 +178,10 @@ async function handlePOST(request: NextRequest) {
   });
 
   // Upload files to Photos
-  const uploadResults = await batchUploadFiles(
-    session.accessToken,
-    filesToUpload
-  );
+  const uploadResults = await batchUploadFiles({
+    auth: authContext,
+    files: filesToUpload,
+  });
 
   // Record successful uploads
   const successfulUploads = uploadResults.filter(r => r.success);
