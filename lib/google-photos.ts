@@ -592,3 +592,262 @@ export async function downloadDriveFile({
     throw error;
   }
 }
+
+// =====================
+// Album Management APIs
+// =====================
+
+/**
+ * Google Photos Album type
+ */
+export interface GooglePhotosAlbum {
+  id: string;
+  title: string;
+  productUrl: string;
+  isWriteable?: boolean;
+  mediaItemsCount?: string;
+  coverPhotoBaseUrl?: string;
+  coverPhotoMediaItemId?: string;
+}
+
+/**
+ * List all albums for the user (with pagination support)
+ */
+interface ListAlbumsParams {
+  auth: GoogleAuthContext;
+  pageSize?: number; // Max 50
+  pageToken?: string;
+}
+
+export async function listAlbums({
+  auth,
+  pageSize = 50,
+  pageToken,
+}: ListAlbumsParams): Promise<{
+  albums: GooglePhotosAlbum[];
+  nextPageToken?: string;
+}> {
+  logger.debug('Listing Google Photos albums', { pageSize, pageToken });
+
+  const url = new URL(`${PHOTOS_API_BASE}/albums`);
+  url.searchParams.set('pageSize', Math.min(pageSize, 50).toString());
+  if (pageToken) {
+    url.searchParams.set('pageToken', pageToken);
+  }
+
+  const { result: response } = await withGoogleAuthRetry(auth, async auth => {
+    return await fetchWithRetry(url.toString(), {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${auth.accessToken}`,
+      },
+    });
+  });
+
+  const data = (await response.json()) as {
+    albums?: GooglePhotosAlbum[];
+    nextPageToken?: string;
+  };
+
+  logger.debug('Albums listed successfully', {
+    count: data.albums?.length || 0,
+    hasNextPage: !!data.nextPageToken,
+  });
+
+  return {
+    albums: data.albums || [],
+    nextPageToken: data.nextPageToken,
+  };
+}
+
+/**
+ * Get all albums for the user (handles pagination automatically)
+ */
+export async function getAllAlbums(
+  auth: GoogleAuthContext
+): Promise<GooglePhotosAlbum[]> {
+  logger.info('Fetching all Google Photos albums');
+
+  const allAlbums: GooglePhotosAlbum[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const { albums, nextPageToken } = await listAlbums({
+      auth,
+      pageSize: 50,
+      pageToken,
+    });
+
+    allAlbums.push(...albums);
+    pageToken = nextPageToken;
+  } while (pageToken);
+
+  logger.info('Fetched all Google Photos albums', { count: allAlbums.length });
+
+  return allAlbums;
+}
+
+/**
+ * Create a new album
+ */
+interface CreateAlbumParams {
+  auth: GoogleAuthContext;
+  title: string;
+}
+
+export async function createAlbum({
+  auth,
+  title,
+}: CreateAlbumParams): Promise<GooglePhotosAlbum> {
+  logger.info('Creating Google Photos album', { title });
+
+  const { result: response } = await withGoogleAuthRetry(auth, async auth => {
+    return await fetchWithRetry(`${PHOTOS_API_BASE}/albums`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${auth.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        album: {
+          title,
+        },
+      }),
+    });
+  });
+
+  const album: GooglePhotosAlbum = await response.json();
+
+  logger.info('Album created successfully', {
+    title,
+    albumId: album.id,
+    productUrl: album.productUrl,
+  });
+
+  return album;
+}
+
+/**
+ * Get album by ID (for validation)
+ */
+interface GetAlbumParams {
+  auth: GoogleAuthContext;
+  albumId: string;
+}
+
+export async function getAlbum({
+  auth,
+  albumId,
+}: GetAlbumParams): Promise<GooglePhotosAlbum | null> {
+  logger.debug('Getting Google Photos album', { albumId });
+
+  try {
+    const { result: response } = await withGoogleAuthRetry(auth, async auth => {
+      return await fetchWithRetry(`${PHOTOS_API_BASE}/albums/${albumId}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${auth.accessToken}`,
+        },
+      });
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        logger.debug('Album not found', { albumId });
+        return null;
+      }
+      throw new Error(`Failed to get album: ${response.statusText}`);
+    }
+
+    const album: GooglePhotosAlbum = await response.json();
+
+    logger.debug('Album retrieved successfully', {
+      albumId,
+      title: album.title,
+    });
+
+    return album;
+  } catch (error) {
+    logger.error('Error getting album', error, { albumId });
+    return null;
+  }
+}
+
+/**
+ * Add media items to an album in batches
+ */
+interface BatchAddMediaItemsToAlbumParams {
+  auth: GoogleAuthContext;
+  albumId: string;
+  mediaItemIds: string[];
+}
+
+export async function batchAddMediaItemsToAlbum({
+  auth,
+  albumId,
+  mediaItemIds,
+}: BatchAddMediaItemsToAlbumParams): Promise<void> {
+  logger.info('Adding media items to album', {
+    albumId,
+    itemCount: mediaItemIds.length,
+  });
+
+  // Google Photos API allows max 50 items per request
+  const BATCH_SIZE = 50;
+
+  for (let i = 0; i < mediaItemIds.length; i += BATCH_SIZE) {
+    const batch = mediaItemIds.slice(i, i + BATCH_SIZE);
+
+    logger.debug('Adding batch to album', {
+      albumId,
+      batchSize: batch.length,
+      progress: `${i + batch.length}/${mediaItemIds.length}`,
+    });
+
+    await retryWithBackoff(
+      async () => {
+        const { result: response } = await withGoogleAuthRetry(
+          auth,
+          async auth => {
+            return await fetchWithRetry(
+              `${PHOTOS_API_BASE}/albums/${albumId}:batchAddMediaItems`,
+              {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${auth.accessToken}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  mediaItemIds: batch,
+                }),
+              }
+            );
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to add media items to album: ${response.statusText}`
+          );
+        }
+      },
+      {
+        maxRetries: 3,
+        onRetry: (error, attempt, delay) => {
+          logger.warn('Retrying batch add to album', {
+            albumId,
+            batchSize: batch.length,
+            attempt,
+            delay,
+            error: error.message,
+          });
+        },
+      }
+    );
+  }
+
+  logger.info('All media items added to album successfully', {
+    albumId,
+    totalItems: mediaItemIds.length,
+  });
+}
