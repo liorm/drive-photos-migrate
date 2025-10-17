@@ -7,7 +7,9 @@ import {
   CheckCircle2,
   AlertCircle,
   ExternalLink,
+  Image,
 } from 'lucide-react';
+import { useState } from 'react';
 
 interface FolderItemProps {
   folder: DriveFolder;
@@ -16,6 +18,39 @@ interface FolderItemProps {
 
 export function FolderItem({ folder, onNavigate }: FolderItemProps) {
   const syncStatus = folder.syncStatus;
+  const [creatingAlbum, setCreatingAlbum] = useState(false);
+
+  // Handle create album
+  const handleCreateAlbum = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent folder navigation
+
+    setCreatingAlbum(true);
+    try {
+      const response = await fetch('/api/albums/queue', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          folderId: folder.id,
+          folderName: folder.name,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        alert(errorData.error || 'Failed to add folder to album queue');
+        return;
+      }
+
+      alert(`"${folder.name}" added to album creation queue!`);
+    } catch (error) {
+      console.error('Error adding folder to album queue:', error);
+      alert('Failed to add folder to album queue');
+    } finally {
+      setCreatingAlbum(false);
+    }
+  };
 
   // Determine sync status badge
   const getSyncBadge = () => {
@@ -89,6 +124,17 @@ export function FolderItem({ folder, onNavigate }: FolderItemProps) {
             </span>
           )}
         </p>
+
+        {/* Create Album Button */}
+        <button
+          onClick={handleCreateAlbum}
+          disabled={creatingAlbum}
+          className="mt-2 w-full flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors z-10 relative"
+          title="Create album from this folder"
+        >
+          <Image className="h-3 w-3" />
+          {creatingAlbum ? 'Adding...' : 'Create Album'}
+        </button>
       </div>
 
       {/* Hover indicator */}

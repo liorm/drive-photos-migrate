@@ -1,0 +1,315 @@
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import { AlbumQueueItem, AlbumQueueStats } from '@/types/album-queue';
+import { Play, Square, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
+import { isAuthError, handleAuthError } from '@/lib/auth-error-handler';
+
+export default function AlbumsPage() {
+  const [queue, setQueue] = useState<AlbumQueueItem[]>([]);
+  const [stats, setStats] = useState<AlbumQueueStats>({
+    total: 0,
+    pending: 0,
+    uploading: 0,
+    creating: 0,
+    updating: 0,
+    completed: 0,
+    failed: 0,
+    cancelled: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [processing, setProcessing] = useState(false);
+
+  // Fetch queue from API
+  const fetchQueue = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch('/api/albums/queue');
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.error || 'Failed to fetch album queue';
+
+        if (response.status === 401 && isAuthError(errorMessage)) {
+          await handleAuthError();
+          return;
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      setQueue(data.queue || []);
+      setStats(data.stats || {
+        total: 0,
+        pending: 0,
+        uploading: 0,
+        creating: 0,
+        updating: 0,
+        completed: 0,
+        failed: 0,
+        cancelled: 0,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      console.error('Error fetching album queue:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Load queue on mount
+  useEffect(() => {
+    fetchQueue();
+  }, [fetchQueue]);
+
+  // Auto-refresh queue every 3 seconds when processing
+  useEffect(() => {
+    if (stats.uploading > 0 || stats.creating > 0 || stats.updating > 0) {
+      const interval = setInterval(() => {
+        fetchQueue();
+      }, 3000);
+
+      return () => clearInterval(interval);
+    }
+  }, [stats.uploading, stats.creating, stats.updating, fetchQueue]);
+
+  // Start processing queue
+  const handleProcess = async () => {
+    if (stats.pending === 0) return;
+
+    try {
+      setProcessing(true);
+      setError(null);
+
+      const response = await fetch('/api/albums/process', {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.error || 'Failed to start processing';
+
+        if (response.status === 401 && isAuthError(errorMessage)) {
+          await handleAuthError();
+          return;
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      await fetchQueue();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      console.error('Error starting album processing:', err);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // Stop processing
+  const handleStop = async () => {
+    try {
+      setError(null);
+
+      const response = await fetch('/api/albums/process', {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.error || 'Failed to stop processing';
+
+        if (response.status === 401 && isAuthError(errorMessage)) {
+          await handleAuthError();
+          return;
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      await fetchQueue();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      console.error('Error stopping album processing:', err);
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'PENDING':
+        return 'text-gray-600 bg-gray-100';
+      case 'UPLOADING':
+        return 'text-blue-600 bg-blue-100';
+      case 'CREATING':
+      case 'UPDATING':
+        return 'text-purple-600 bg-purple-100';
+      case 'COMPLETED':
+        return 'text-green-600 bg-green-100';
+      case 'FAILED':
+        return 'text-red-600 bg-red-100';
+      case 'CANCELLED':
+        return 'text-orange-600 bg-orange-100';
+      default:
+        return 'text-gray-600 bg-gray-100';
+    }
+  };
+
+  const isProcessingActive = stats.uploading > 0 || stats.creating > 0 || stats.updating > 0;
+
+  return (
+    <div className="container mx-auto p-6 max-w-6xl">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold mb-2">Album Creation Queue</h1>
+        <p className="text-gray-600">
+          Create Google Photos albums from your Drive folders
+        </p>
+      </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <h3 className="font-semibold text-red-900">Error</h3>
+            <p className="text-red-700 text-sm mt-1">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-6">
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="text-2xl font-bold">{stats.total}</div>
+          <div className="text-sm text-gray-600">Total</div>
+        </div>
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="text-2xl font-bold text-gray-600">{stats.pending}</div>
+          <div className="text-sm text-gray-600">Pending</div>
+        </div>
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="text-2xl font-bold text-blue-600">{stats.uploading}</div>
+          <div className="text-sm text-gray-600">Uploading</div>
+        </div>
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="text-2xl font-bold text-purple-600">{stats.creating}</div>
+          <div className="text-sm text-gray-600">Creating</div>
+        </div>
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="text-2xl font-bold text-purple-600">{stats.updating}</div>
+          <div className="text-sm text-gray-600">Updating</div>
+        </div>
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
+          <div className="text-sm text-gray-600">Completed</div>
+        </div>
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="text-2xl font-bold text-red-600">{stats.failed}</div>
+          <div className="text-sm text-gray-600">Failed</div>
+        </div>
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="text-2xl font-bold text-orange-600">{stats.cancelled}</div>
+          <div className="text-sm text-gray-600">Cancelled</div>
+        </div>
+      </div>
+
+      {/* Control Buttons */}
+      <div className="mb-6 flex gap-3">
+        <button
+          onClick={handleProcess}
+          disabled={stats.pending === 0 || processing || isProcessingActive}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+        >
+          {processing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Play className="h-4 w-4" />
+          )}
+          Start Processing
+        </button>
+
+        <button
+          onClick={handleStop}
+          disabled={!isProcessingActive}
+          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+        >
+          <Square className="h-4 w-4" />
+          Stop Processing
+        </button>
+      </div>
+
+      {/* Queue List */}
+      <div className="bg-white rounded-lg border border-gray-200">
+        <div className="p-4 border-b border-gray-200">
+          <h2 className="text-lg font-semibold">Queue Items</h2>
+        </div>
+
+        {loading ? (
+          <div className="p-8 text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto text-gray-400" />
+            <p className="text-gray-600 mt-2">Loading queue...</p>
+          </div>
+        ) : queue.length === 0 ? (
+          <div className="p-8 text-center text-gray-600">
+            No albums in queue. Add folders from the Drive browser.
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-200">
+            {queue.map(item => (
+              <div key={item.id} className="p-4 hover:bg-gray-50">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-medium truncate">{item.folderName}</h3>
+                      <span
+                        className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(
+                          item.status
+                        )}`}
+                      >
+                        {item.status}
+                      </span>
+                      {item.mode && (
+                        <span className="px-2 py-0.5 rounded text-xs font-medium text-gray-600 bg-gray-100">
+                          {item.mode}
+                        </span>
+                      )}
+                    </div>
+
+                    {item.totalFiles !== null && (
+                      <div className="text-sm text-gray-600">
+                        {item.uploadedFiles} / {item.totalFiles} files uploaded
+                      </div>
+                    )}
+
+                    {item.error && (
+                      <div className="text-sm text-red-600 mt-1">{item.error}</div>
+                    )}
+
+                    {item.photosAlbumUrl && (
+                      <a
+                        href={item.photosAlbumUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-blue-600 hover:underline flex items-center gap-1 mt-1"
+                      >
+                        View in Google Photos
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+
+                  <div className="text-sm text-gray-500">
+                    {new Date(item.createdAt).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
