@@ -43,16 +43,18 @@ export default function AlbumsPage() {
 
       const data = await response.json();
       setQueue(data.queue || []);
-      setStats(data.stats || {
-        total: 0,
-        pending: 0,
-        uploading: 0,
-        creating: 0,
-        updating: 0,
-        completed: 0,
-        failed: 0,
-        cancelled: 0,
-      });
+      setStats(
+        data.stats || {
+          total: 0,
+          pending: 0,
+          uploading: 0,
+          creating: 0,
+          updating: 0,
+          completed: 0,
+          failed: 0,
+          cancelled: 0,
+        }
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
       console.error('Error fetching album queue:', err);
@@ -158,12 +160,13 @@ export default function AlbumsPage() {
     }
   };
 
-  const isProcessingActive = stats.uploading > 0 || stats.creating > 0 || stats.updating > 0;
+  const isProcessingActive =
+    stats.uploading > 0 || stats.creating > 0 || stats.updating > 0;
 
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
+    <div className="container mx-auto max-w-6xl p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Album Creation Queue</h1>
+        <h1 className="mb-2 text-3xl font-bold">Album Creation Queue</h1>
         <p className="text-gray-600">
           Create Google Photos albums from your Drive folders
         </p>
@@ -171,47 +174,59 @@ export default function AlbumsPage() {
 
       {/* Error Display */}
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-          <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+        <div className="mb-6 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
+          <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" />
           <div className="flex-1">
             <h3 className="font-semibold text-red-900">Error</h3>
-            <p className="text-red-700 text-sm mt-1">{error}</p>
+            <p className="mt-1 text-sm text-red-700">{error}</p>
           </div>
         </div>
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-6">
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
+      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-8">
+        <div className="rounded-lg border border-gray-200 bg-white p-4">
           <div className="text-2xl font-bold">{stats.total}</div>
           <div className="text-sm text-gray-600">Total</div>
         </div>
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <div className="text-2xl font-bold text-gray-600">{stats.pending}</div>
+        <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="text-2xl font-bold text-gray-600">
+            {stats.pending}
+          </div>
           <div className="text-sm text-gray-600">Pending</div>
         </div>
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <div className="text-2xl font-bold text-blue-600">{stats.uploading}</div>
+        <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="text-2xl font-bold text-blue-600">
+            {stats.uploading}
+          </div>
           <div className="text-sm text-gray-600">Uploading</div>
         </div>
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <div className="text-2xl font-bold text-purple-600">{stats.creating}</div>
+        <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="text-2xl font-bold text-purple-600">
+            {stats.creating}
+          </div>
           <div className="text-sm text-gray-600">Creating</div>
         </div>
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <div className="text-2xl font-bold text-purple-600">{stats.updating}</div>
+        <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="text-2xl font-bold text-purple-600">
+            {stats.updating}
+          </div>
           <div className="text-sm text-gray-600">Updating</div>
         </div>
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
+        <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="text-2xl font-bold text-green-600">
+            {stats.completed}
+          </div>
           <div className="text-sm text-gray-600">Completed</div>
         </div>
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
+        <div className="rounded-lg border border-gray-200 bg-white p-4">
           <div className="text-2xl font-bold text-red-600">{stats.failed}</div>
           <div className="text-sm text-gray-600">Failed</div>
         </div>
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <div className="text-2xl font-bold text-orange-600">{stats.cancelled}</div>
+        <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="text-2xl font-bold text-orange-600">
+            {stats.cancelled}
+          </div>
           <div className="text-sm text-gray-600">Cancelled</div>
         </div>
       </div>
@@ -221,7 +236,7 @@ export default function AlbumsPage() {
         <button
           onClick={handleProcess}
           disabled={stats.pending === 0 || processing || isProcessingActive}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
         >
           {processing ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -234,7 +249,7 @@ export default function AlbumsPage() {
         <button
           onClick={handleStop}
           disabled={!isProcessingActive}
-          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-gray-300"
         >
           <Square className="h-4 w-4" />
           Stop Processing
@@ -242,15 +257,15 @@ export default function AlbumsPage() {
       </div>
 
       {/* Queue List */}
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="p-4 border-b border-gray-200">
+      <div className="rounded-lg border border-gray-200 bg-white">
+        <div className="border-b border-gray-200 p-4">
           <h2 className="text-lg font-semibold">Queue Items</h2>
         </div>
 
         {loading ? (
           <div className="p-8 text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto text-gray-400" />
-            <p className="text-gray-600 mt-2">Loading queue...</p>
+            <Loader2 className="mx-auto h-8 w-8 animate-spin text-gray-400" />
+            <p className="mt-2 text-gray-600">Loading queue...</p>
           </div>
         ) : queue.length === 0 ? (
           <div className="p-8 text-center text-gray-600">
@@ -261,18 +276,20 @@ export default function AlbumsPage() {
             {queue.map(item => (
               <div key={item.id} className="p-4 hover:bg-gray-50">
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-medium truncate">{item.folderName}</h3>
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex items-center gap-2">
+                      <h3 className="truncate font-medium">
+                        {item.folderName}
+                      </h3>
                       <span
-                        className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(
+                        className={`rounded px-2 py-0.5 text-xs font-medium ${getStatusColor(
                           item.status
                         )}`}
                       >
                         {item.status}
                       </span>
                       {item.mode && (
-                        <span className="px-2 py-0.5 rounded text-xs font-medium text-gray-600 bg-gray-100">
+                        <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
                           {item.mode}
                         </span>
                       )}
@@ -285,7 +302,9 @@ export default function AlbumsPage() {
                     )}
 
                     {item.error && (
-                      <div className="text-sm text-red-600 mt-1">{item.error}</div>
+                      <div className="mt-1 text-sm text-red-600">
+                        {item.error}
+                      </div>
                     )}
 
                     {item.photosAlbumUrl && (
@@ -293,7 +312,7 @@ export default function AlbumsPage() {
                         href={item.photosAlbumUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-sm text-blue-600 hover:underline flex items-center gap-1 mt-1"
+                        className="mt-1 flex items-center gap-1 text-sm text-blue-600 hover:underline"
                       >
                         View in Google Photos
                         <ExternalLink className="h-3 w-3" />

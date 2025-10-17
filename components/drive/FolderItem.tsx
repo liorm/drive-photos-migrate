@@ -129,7 +129,7 @@ export function FolderItem({ folder, onNavigate }: FolderItemProps) {
         <button
           onClick={handleCreateAlbum}
           disabled={creatingAlbum}
-          className="mt-2 w-full flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors z-10 relative"
+          className="relative z-10 mt-2 flex w-full items-center justify-center gap-1 rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
           title="Create album from this folder"
         >
           <Image className="h-3 w-3" />

@@ -227,7 +227,7 @@ class AlbumsManager {
         {
           description: `Creating ${pendingItems.length} album(s)`,
           total: pendingItems.length,
-          userEmail,
+          metadata: { userEmail },
         }
       );
 
@@ -402,10 +402,6 @@ class AlbumsManager {
     });
 
     // Step 4: Enumerate all files in the folder
-    operationStatusManager.updateMetadata(operationId, {
-      currentAlbum: albumQueueItem.folderName,
-      currentStep: 'Enumerating files',
-    });
 
     const fileIds = await this.enumerateFilesInFolder(
       auth,
@@ -427,10 +423,6 @@ class AlbumsManager {
     });
 
     // Step 6: Check which files are already uploaded
-    operationStatusManager.updateMetadata(operationId, {
-      currentAlbum: albumQueueItem.folderName,
-      currentStep: 'Checking upload status',
-    });
 
     const albumItems = await getAlbumItems(albumQueueItem.id);
     const filesToUpload: string[] = [];
@@ -478,11 +470,6 @@ class AlbumsManager {
 
     // Step 7: Add non-uploaded files to UploadsManager queue
     if (filesToUpload.length > 0) {
-      operationStatusManager.updateMetadata(operationId, {
-        currentAlbum: albumQueueItem.folderName,
-        currentStep: 'Queuing files for upload',
-      });
-
       logger.info('Adding files to upload queue', {
         userEmail,
         albumQueueId: albumQueueItem.id,
@@ -498,11 +485,6 @@ class AlbumsManager {
 
     // Step 8: Wait for all files to be uploaded
     if (filesToUpload.length > 0) {
-      operationStatusManager.updateMetadata(operationId, {
-        currentAlbum: albumQueueItem.folderName,
-        currentStep: 'Waiting for uploads to complete',
-      });
-
       logger.info('Waiting for files to be uploaded', {
         userEmail,
         albumQueueId: albumQueueItem.id,
@@ -592,11 +574,6 @@ class AlbumsManager {
     let photosAlbumUrl: string;
 
     if (mode === 'CREATE') {
-      operationStatusManager.updateMetadata(operationId, {
-        currentAlbum: albumQueueItem.folderName,
-        currentStep: 'Creating album in Google Photos',
-      });
-
       logger.info('Creating album in Google Photos', {
         userEmail,
         albumQueueId: albumQueueItem.id,
@@ -659,10 +636,6 @@ class AlbumsManager {
       });
     } else {
       // Step 11: Add all media items to the album
-      operationStatusManager.updateMetadata(operationId, {
-        currentAlbum: albumQueueItem.folderName,
-        currentStep: 'Adding media items to album',
-      });
 
       logger.info('Adding media items to album', {
         userEmail,
@@ -756,7 +729,7 @@ class AlbumsManager {
         if (
           op.metadata?.userEmail === userEmail &&
           op.status === 'in_progress' &&
-          op.type === 'Creating Albums'
+          op.type === OperationType.LONG_WRITE
         ) {
           operationStatusManager.failOperation(op.id, 'Stopped by user');
         }
