@@ -72,6 +72,17 @@ export async function getUploadRecord(
 }
 
 /**
+ * Get just the media item ID for an uploaded file
+ */
+export async function getUploadedMediaItemId(
+  userEmail: string,
+  driveFileId: string
+): Promise<string | null> {
+  const record = await getUploadRecord(userEmail, driveFileId);
+  return record ? record.photosMediaItemId : null;
+}
+
+/**
  * Bulk check if multiple files are uploaded
  * Returns a Map of driveFileId -> UploadRecord | null
  */
