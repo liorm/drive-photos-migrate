@@ -3,9 +3,11 @@
 ### **Feature: Create Albums from Drive Folders**
 
 #### **Overview**
+
 Allow users to convert Drive folders into Google Photos albums. Folders can be queued for album creation, and a dedicated manager (similar to `UploadsManager`) handles the album creation workflow. Users can monitor progress, manage the queue, and see which folders have already been converted to albums.
 
 #### **Key Design Decisions**
+
 1. **Folder-Album Mapping with Lazy Discovery**:
    - Primary source of truth: `folder_albums` table in database
    - **Lazy initialization**: When checking if a folder has an album:
@@ -44,55 +46,59 @@ Allow users to convert Drive folders into Google Photos albums. Folders can be q
 #### **1. Database Schema**
 
 ##### **`album_queue` Table**
+
 Tracks album creation jobs in the queue.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | UUID | Primary key |
-| `userEmail` | VARCHAR | User who queued the album |
-| `driveFolderId` | VARCHAR | Google Drive folder ID |
-| `folderName` | VARCHAR | Display name of the folder |
-| `status` | ENUM | `PENDING`, `UPLOADING`, `CREATING`, `UPDATING`, `COMPLETED`, `FAILED`, `CANCELLED` |
-| `mode` | ENUM | `CREATE`, `UPDATE` (set during processing based on existing album check) |
-| `totalFiles` | INTEGER | Total number of files in folder (null until enumerated) |
-| `uploadedFiles` | INTEGER | Number of files uploaded so far |
-| `photosAlbumId` | VARCHAR | Google Photos album ID (populated when created) |
-| `photosAlbumUrl` | VARCHAR | Google Photos album URL (populated when created) |
-| `error` | TEXT | Error message if failed |
-| `createdAt` | TIMESTAMP | When queued |
-| `startedAt` | TIMESTAMP | When processing started |
-| `completedAt` | TIMESTAMP | When completed/failed |
+| Column           | Type      | Description                                                                        |
+| ---------------- | --------- | ---------------------------------------------------------------------------------- |
+| `id`             | UUID      | Primary key                                                                        |
+| `userEmail`      | VARCHAR   | User who queued the album                                                          |
+| `driveFolderId`  | VARCHAR   | Google Drive folder ID                                                             |
+| `folderName`     | VARCHAR   | Display name of the folder                                                         |
+| `status`         | ENUM      | `PENDING`, `UPLOADING`, `CREATING`, `UPDATING`, `COMPLETED`, `FAILED`, `CANCELLED` |
+| `mode`           | ENUM      | `CREATE`, `UPDATE` (set during processing based on existing album check)           |
+| `totalFiles`     | INTEGER   | Total number of files in folder (null until enumerated)                            |
+| `uploadedFiles`  | INTEGER   | Number of files uploaded so far                                                    |
+| `photosAlbumId`  | VARCHAR   | Google Photos album ID (populated when created)                                    |
+| `photosAlbumUrl` | VARCHAR   | Google Photos album URL (populated when created)                                   |
+| `error`          | TEXT      | Error message if failed                                                            |
+| `createdAt`      | TIMESTAMP | When queued                                                                        |
+| `startedAt`      | TIMESTAMP | When processing started                                                            |
+| `completedAt`    | TIMESTAMP | When completed/failed                                                              |
 
 ##### **`album_items` Table**
+
 Join table linking album queue entries to their files.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | UUID | Primary key |
-| `albumQueueId` | UUID | Foreign key to `album_queue` |
-| `driveFileId` | VARCHAR | Google Drive file ID |
-| `photosMediaItemId` | VARCHAR | Google Photos media item ID (from `uploads` table) |
-| `status` | ENUM | `PENDING`, `UPLOADED`, `FAILED` |
-| `addedAt` | TIMESTAMP | When added to album items |
+| Column              | Type      | Description                                        |
+| ------------------- | --------- | -------------------------------------------------- |
+| `id`                | UUID      | Primary key                                        |
+| `albumQueueId`      | UUID      | Foreign key to `album_queue`                       |
+| `driveFileId`       | VARCHAR   | Google Drive file ID                               |
+| `photosMediaItemId` | VARCHAR   | Google Photos media item ID (from `uploads` table) |
+| `status`            | ENUM      | `PENDING`, `UPLOADED`, `FAILED`                    |
+| `addedAt`           | TIMESTAMP | When added to album items                          |
 
 ##### **`folder_albums` Table**
+
 Persistent mapping of Drive folders to their created Google Photos albums.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | UUID | Primary key |
-| `userEmail` | VARCHAR | User email |
-| `driveFolderId` | VARCHAR | Google Drive folder ID |
-| `folderName` | VARCHAR | Folder name at time of creation/discovery |
-| `photosAlbumId` | VARCHAR | Google Photos album ID |
-| `photosAlbumUrl` | VARCHAR | Google Photos album URL (format: `https://photos.google.com/lr/album/{albumId}`) |
-| `createdAt` | TIMESTAMP | When album was created (or discovered) |
-| `lastUpdatedAt` | TIMESTAMP | When we last added files to this album (NULL if never updated) |
-| `totalItemsInAlbum` | INTEGER | Current number of items in the album |
-| `discoveredViaApi` | BOOLEAN | `true` if found via API lookup, `false` if created by us |
-| `albumDeleted` | BOOLEAN | `true` if album no longer exists in Google Photos (verified on access) |
+| Column              | Type      | Description                                                                      |
+| ------------------- | --------- | -------------------------------------------------------------------------------- |
+| `id`                | UUID      | Primary key                                                                      |
+| `userEmail`         | VARCHAR   | User email                                                                       |
+| `driveFolderId`     | VARCHAR   | Google Drive folder ID                                                           |
+| `folderName`        | VARCHAR   | Folder name at time of creation/discovery                                        |
+| `photosAlbumId`     | VARCHAR   | Google Photos album ID                                                           |
+| `photosAlbumUrl`    | VARCHAR   | Google Photos album URL (format: `https://photos.google.com/lr/album/{albumId}`) |
+| `createdAt`         | TIMESTAMP | When album was created (or discovered)                                           |
+| `lastUpdatedAt`     | TIMESTAMP | When we last added files to this album (NULL if never updated)                   |
+| `totalItemsInAlbum` | INTEGER   | Current number of items in the album                                             |
+| `discoveredViaApi`  | BOOLEAN   | `true` if found via API lookup, `false` if created by us                         |
+| `albumDeleted`      | BOOLEAN   | `true` if album no longer exists in Google Photos (verified on access)           |
 
 **Indexes**:
+
 - Composite index on `(userEmail, driveFolderId)` for fast lookups
 - Index on `(userEmail, photosAlbumId)` for reverse lookups
 
@@ -103,12 +109,14 @@ Persistent mapping of Drive folders to their created Google Photos albums.
 Create `lib/albums-manager.ts` following the same pattern as `UploadsManager`:
 
 **Responsibilities**:
+
 - Add folders to the album creation queue
 - Process the queue: enumerate files, ensure uploads, create albums
 - Provide queue statistics and progress tracking
 - Handle cancellation and error recovery
 
 **Key Methods**:
+
 - `addToQueue(userEmail, auth, folderId, folderName)`: Queue a folder for album creation
 - `startProcessing(userEmail, auth)`: Process the album queue for a user
 - `stopProcessing(userEmail)`: Cancel in-flight album processing
@@ -116,6 +124,7 @@ Create `lib/albums-manager.ts` following the same pattern as `UploadsManager`:
 - `removeFromQueue(userEmail, albumQueueId)`: Remove an album from the queue
 
 **Processing Flow**:
+
 1. Fetch album queue items with `PENDING` status
 2. For each album:
    - **Check for existing album**:
@@ -145,9 +154,11 @@ Create `lib/albums-manager.ts` following the same pattern as `UploadsManager`:
 #### **3. Backend API Endpoints**
 
 ##### **POST `/api/albums/queue`**
+
 Add a folder to the album creation queue.
 
 **Request Body**:
+
 ```json
 {
   "folderId": "string",
@@ -156,6 +167,7 @@ Add a folder to the album creation queue.
 ```
 
 **Response**:
+
 ```json
 {
   "albumQueueId": "uuid",
@@ -164,9 +176,11 @@ Add a folder to the album creation queue.
 ```
 
 ##### **GET `/api/albums/queue`**
+
 Get all album queue items for the current user.
 
 **Response**:
+
 ```json
 {
   "queue": [
@@ -192,24 +206,30 @@ Get all album queue items for the current user.
 ```
 
 ##### **DELETE `/api/albums/queue/:id`**
+
 Remove an album from the queue (must not be in `UPLOADING` or `CREATING` status).
 
 ##### **POST `/api/albums/process`**
+
 Start processing the album queue.
 
 ##### **DELETE `/api/albums/process`**
+
 Stop processing the album queue.
 
 ##### **GET `/api/drive/folder-albums`**
+
 Get folder-to-album mappings for a list of folder IDs (used to show badges).
 
 **Lazy Discovery**: For folders not in DB, queries Google Photos API to find albums with matching names.
 
 **Query Parameters**:
+
 - `folderIds`: Comma-separated list of folder IDs
 - `folderNames`: Comma-separated list of folder names (same order as IDs, for lazy discovery)
 
 **Response**:
+
 ```json
 {
   "mappings": {
@@ -226,15 +246,18 @@ Get folder-to-album mappings for a list of folder IDs (used to show badges).
 ```
 
 **Note**: This endpoint will:
+
 1. Check DB first for all folder IDs
 2. For missing mappings, search Google Photos API by folder name (one-time)
 3. Store discovered mappings in DB
 4. Return combined results
 
 ##### **POST `/api/albums/update`**
+
 Update an existing album with new files from the folder.
 
 **Request Body**:
+
 ```json
 {
   "folderId": "string",
@@ -243,6 +266,7 @@ Update an existing album with new files from the folder.
 ```
 
 **Response**:
+
 ```json
 {
   "albumQueueId": "uuid",
@@ -258,6 +282,7 @@ Update an existing album with new files from the folder.
 ##### **4.1. FileBrowser Updates** (`components/drive/FileBrowser.tsx`)
 
 **Changes**:
+
 1. Add "Add to Album Queue" button next to "Enqueue All" for folders
 2. Fetch folder-album mappings for visible folders via `/api/drive/folder-albums`
 3. Show badge on folders that already have albums created (disable queue button)
@@ -265,6 +290,7 @@ Update an existing album with new files from the folder.
 5. Add handler to add folder to album queue
 
 **UI Elements**:
+
 - Badge on folder items: "📸 Album" with link to Google Photos album (when album exists)
 - **"Create Album" button** on each folder card (enabled for folders without albums)
 - **"Update Album" button** on each folder card (enabled for folders with existing albums, shows count of new files if detected)
@@ -272,6 +298,7 @@ Update an existing album with new files from the folder.
 - Button disabled if folder is already in queue
 
 **Folder Card Layout**:
+
 ```
 ┌─────────────────────────────────────┐
 │  📁 Folder Name                     │
@@ -286,6 +313,7 @@ Update an existing album with new files from the folder.
 New page at `/albums` following the pattern of `app/queue/page.tsx`:
 
 **Features**:
+
 - Display album queue with stats cards (Total, Pending, Uploading, Creating, Completed, Failed)
 - Show progress for each album (e.g., "Uploading 50/120 files")
 - Control buttons: Start Processing, Stop Processing, Clear Completed/Failed, Remove from Queue
@@ -294,6 +322,7 @@ New page at `/albums` following the pattern of `app/queue/page.tsx`:
 - Show error messages for failed albums
 
 **Components**:
+
 - `AlbumQueueList`: List of album queue items with status badges
 - `AlbumQueueItem`: Individual album with progress bar and controls
 
@@ -306,21 +335,25 @@ Add "Albums" link to navigation menu (e.g., in header or sidebar).
 #### **5. Implementation Phases**
 
 **Phase 1: Database & Core Logic**
+
 1. Create database tables (`album_queue`, `album_items`, `folder_albums`)
 2. Create database access functions (similar to `upload-queue-db.ts`)
 3. Implement `AlbumsManager` singleton
 
 **Phase 2: Backend API**
+
 1. Implement all API endpoints
 2. Integrate with `AlbumsManager`
 3. Add authentication and error handling
 
 **Phase 3: Frontend UI**
+
 1. Update `FileBrowser` with folder queue controls and badges
 2. Create `/albums` page with queue management
 3. Add navigation link
 
 **Phase 4: Testing & Refinement**
+
 1. Test with folders of various sizes
 2. Test cancellation and error recovery
 3. Test edge cases (empty folders, folders with only synced files, etc.)
@@ -330,23 +363,28 @@ Add "Albums" link to navigation menu (e.g., in header or sidebar).
 #### **6. Google Photos API Integration**
 
 ##### **Album Discovery by Name**
+
 Endpoint: `GET https://photoslibrary.googleapis.com/v1/albums`
 
 **Flow**:
+
 1. Fetch all albums (with pagination)
 2. Filter by `title` matching folder name
 3. If match found, extract `id` and construct URL
 4. Store in `folder_albums` table with `discoveredViaApi=true`
 
 **Limitations**:
+
 - Album names can change after discovery (our DB tracks by `photosAlbumId`, so this is OK)
 - Multiple albums could have same name (take first match, or let user choose?)
 - Rate limits: Google Photos allows 10,000 requests/day
 
 ##### **Album Creation**
+
 Endpoint: `POST https://photoslibrary.googleapis.com/v1/albums`
 
 **Request**:
+
 ```json
 {
   "album": {
@@ -356,6 +394,7 @@ Endpoint: `POST https://photoslibrary.googleapis.com/v1/albums`
 ```
 
 **Response**:
+
 ```json
 {
   "id": "album-id",
@@ -365,9 +404,11 @@ Endpoint: `POST https://photoslibrary.googleapis.com/v1/albums`
 ```
 
 ##### **Add Items to Album**
+
 Endpoint: `POST https://photoslibrary.googleapis.com/v1/albums/{albumId}:batchAddMediaItems`
 
 **Request**:
+
 ```json
 {
   "mediaItemIds": ["item1", "item2", "..."]
@@ -381,6 +422,7 @@ Endpoint: `POST https://photoslibrary.googleapis.com/v1/albums/{albumId}:batchAd
 #### **7. Deletion Handling**
 
 When accessing an album link or attempting to update:
+
 1. If Google Photos API returns 404 (album not found):
    - Set `albumDeleted=true` in `folder_albums` table
    - Show warning badge on folder: "⚠️ Album Deleted"
@@ -395,6 +437,7 @@ When accessing an album link or attempting to update:
 ---
 
 #### **8. Future Enhancements**
+
 - **Duplicate Album Names**: How to handle multiple albums with same name? (Currently: take first match)
 - **Folder Hierarchy**: Support creating nested album structure matching folder hierarchy?
 - **Album Settings**: Allow customizing album title, description, cover photo during queue?
@@ -402,6 +445,7 @@ When accessing an album link or attempting to update:
 - **Bulk Validation**: Add UI to validate all folder→album mappings at once
 
 ## Backlog
+
 - Better "cache" management of folders:
   - add option to recursively fetch folders (and cache the items)
   - add option to recursively update the "sync" status of folders

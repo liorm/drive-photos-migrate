@@ -9,6 +9,10 @@ const MIGRATIONS: Array<{ name: string; migrate: (db: Database) => void }> = [
     name: 'add-file-size-to-uploads',
     migrate: addFileSizeToUploads,
   },
+  {
+    name: 'add-album-tables',
+    migrate: addAlbumTables,
+  },
 ];
 
 function addFileSizeToUploads(db: Database): void {
@@ -50,6 +54,90 @@ function addFileSizeToUploads(db: Database): void {
     }
     logger.info(`Populated file_size for ${updatedCount} uploads`);
   }
+}
+
+function addAlbumTables(db: Database): void {
+  logger.info('Running migration: add-album-tables');
+
+  // Create album_queue table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS album_queue (
+      id TEXT PRIMARY KEY,
+      user_email TEXT NOT NULL,
+      drive_folder_id TEXT NOT NULL,
+      folder_name TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('PENDING', 'UPLOADING', 'CREATING', 'UPDATING', 'COMPLETED', 'FAILED', 'CANCELLED')),
+      mode TEXT CHECK(mode IN ('CREATE', 'UPDATE')),
+      total_files INTEGER,
+      uploaded_files INTEGER NOT NULL DEFAULT 0,
+      photos_album_id TEXT,
+      photos_album_url TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      started_at TEXT,
+      completed_at TEXT
+    );
+  `);
+
+  // Create album_items table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS album_items (
+      id TEXT PRIMARY KEY,
+      album_queue_id TEXT NOT NULL,
+      drive_file_id TEXT NOT NULL,
+      photos_media_item_id TEXT,
+      status TEXT NOT NULL CHECK(status IN ('PENDING', 'UPLOADED', 'FAILED')),
+      added_at TEXT NOT NULL,
+      FOREIGN KEY (album_queue_id) REFERENCES album_queue(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Create folder_albums table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS folder_albums (
+      id TEXT PRIMARY KEY,
+      user_email TEXT NOT NULL,
+      drive_folder_id TEXT NOT NULL,
+      folder_name TEXT NOT NULL,
+      photos_album_id TEXT NOT NULL,
+      photos_album_url TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      last_updated_at TEXT,
+      total_items_in_album INTEGER NOT NULL DEFAULT 0,
+      discovered_via_api INTEGER NOT NULL DEFAULT 0,
+      album_deleted INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+
+  // Create indexes for album_queue
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_album_queue_user_status
+    ON album_queue(user_email, status);
+  `);
+
+  // Create indexes for album_items
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_album_items_queue_id
+    ON album_items(album_queue_id);
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_album_items_drive_file
+    ON album_items(drive_file_id);
+  `);
+
+  // Create indexes for folder_albums
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_folder_albums_user_folder
+    ON folder_albums(user_email, drive_folder_id);
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_folder_albums_user_album
+    ON folder_albums(user_email, photos_album_id);
+  `);
+
+  logger.info('Album tables created successfully');
 }
 
 export function runMigrations(db: Database): void {
