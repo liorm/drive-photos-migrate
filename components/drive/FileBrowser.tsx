@@ -73,6 +73,9 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
   const [folderAlbumMappings, setFolderAlbumMappings] = useState<
     Map<string, FolderAlbumMapping>
   >(new Map());
+  const [folderQueueStatus, setFolderQueueStatus] = useState<
+    Map<string, string>
+  >(new Map());
 
   // Load hide synced preference from localStorage on mount
   useEffect(() => {
@@ -158,11 +161,12 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
     []
   );
 
-  // Fetch folder-album mappings
+  // Fetch folder-album mappings and queue status
   const fetchFolderAlbumMappings = useCallback(
     async (folderList: DriveFolder[]) => {
       if (folderList.length === 0) {
         setFolderAlbumMappings(new Map());
+        setFolderQueueStatus(new Map());
         return;
       }
 
@@ -183,6 +187,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
 
         const data = await response.json();
         const mappingsMap = new Map<string, FolderAlbumMapping>();
+        const queueStatusMap = new Map<string, string>();
 
         if (data.mappings) {
           Object.entries(data.mappings).forEach(([folderId, mapping]) => {
@@ -190,7 +195,14 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
           });
         }
 
+        if (data.queueStatus) {
+          Object.entries(data.queueStatus).forEach(([folderId, status]) => {
+            queueStatusMap.set(folderId, status as string);
+          });
+        }
+
         setFolderAlbumMappings(mappingsMap);
+        setFolderQueueStatus(queueStatusMap);
       } catch (err) {
         console.error('Error fetching folder-album mappings:', err);
       }
@@ -582,6 +594,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
           selectedFiles={selectedFiles}
           queuedFiles={queuedFiles}
           folderAlbumMappings={folderAlbumMappings}
+          folderQueueStatus={folderQueueStatus}
           onToggleSelect={handleToggleSelect}
           onNavigate={handleNavigate}
           onAlbumCreated={() => fetchFolderAlbumMappings(folders)}
@@ -595,6 +608,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
           selectedFiles={selectedFiles}
           queuedFiles={queuedFiles}
           folderAlbumMappings={folderAlbumMappings}
+          folderQueueStatus={folderQueueStatus}
           onToggleSelect={handleToggleSelect}
           onNavigate={handleNavigate}
           onAlbumCreated={() => fetchFolderAlbumMappings(folders)}

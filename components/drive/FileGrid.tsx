@@ -10,6 +10,7 @@ interface FileGridProps {
   selectedFiles: Set<string>;
   queuedFiles: Set<string>;
   folderAlbumMappings: Map<string, FolderAlbumMapping>;
+  folderQueueStatus: Map<string, string>;
   onToggleSelect: (file: DriveFile) => void;
   onNavigate: (folderId: string) => void;
   onAlbumCreated: () => void;
@@ -20,6 +21,7 @@ export function FileGrid({
   selectedFiles,
   queuedFiles,
   folderAlbumMappings,
+  folderQueueStatus,
   onToggleSelect,
   onNavigate,
   onAlbumCreated,
@@ -74,6 +76,7 @@ export function FileGrid({
                 key={folder.id}
                 folder={folder}
                 albumMapping={folderAlbumMappings.get(folder.id)}
+                queueStatus={folderQueueStatus.get(folder.id)}
                 onNavigate={onNavigate}
                 onAlbumCreated={onAlbumCreated}
               />

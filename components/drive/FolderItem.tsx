@@ -10,13 +10,16 @@ import {
   Image,
   RefreshCw,
   AlertTriangle,
+  Clock,
 } from 'lucide-react';
 import { useState } from 'react';
 import { FolderAlbumMapping } from './FileBrowser';
+import { useToast } from '@/components/ui/Toast';
 
 interface FolderItemProps {
   folder: DriveFolder;
   albumMapping?: FolderAlbumMapping;
+  queueStatus?: string;
   onNavigate: (folderId: string) => void;
   onAlbumCreated: () => void;
 }
@@ -24,11 +27,13 @@ interface FolderItemProps {
 export function FolderItem({
   folder,
   albumMapping,
+  queueStatus,
   onNavigate,
   onAlbumCreated,
 }: FolderItemProps) {
   const syncStatus = folder.syncStatus;
   const [working, setWorking] = useState(false);
+  const { showToast } = useToast();
 
   // Handle create/update album
   const handleAlbumAction = async (e: React.MouseEvent) => {
@@ -49,18 +54,21 @@ export function FolderItem({
 
       if (!response.ok) {
         const errorData = await response.json();
-        alert(errorData.error || 'Failed to add folder to album queue');
+        showToast(
+          errorData.error || 'Failed to add folder to album queue',
+          'error'
+        );
         return;
       }
 
       const action = albumMapping ? 'update' : 'creation';
-      alert(`"${folder.name}" added to album ${action} queue!`);
+      showToast(`"${folder.name}" added to album ${action} queue`, 'success');
 
       // Refresh mappings after adding to queue
       onAlbumCreated();
     } catch (error) {
       console.error('Error adding folder to album queue:', error);
-      alert('Failed to add folder to album queue');
+      showToast('Failed to add folder to album queue', 'error');
     } finally {
       setWorking(false);
     }
@@ -94,8 +102,23 @@ export function FolderItem({
     return null;
   };
 
+  // Check if folder is already in queue (active status)
+  const isInQueue =
+    queueStatus &&
+    ['PENDING', 'UPLOADING', 'CREATING', 'UPDATING'].includes(queueStatus);
+
   // Determine button text and style
   const getButtonConfig = () => {
+    // If in queue, show "In Queue" status
+    if (isInQueue) {
+      return {
+        text: `In Queue (${queueStatus})`,
+        icon: <Clock className="h-3 w-3" />,
+        className:
+          'text-gray-700 bg-gray-100 border-gray-300 cursor-not-allowed',
+      };
+    }
+
     if (!albumMapping) {
       // No album exists - show Create Album
       return {
@@ -208,14 +231,16 @@ export function FolderItem({
         {/* Create/Update Album Button */}
         <button
           onClick={handleAlbumAction}
-          disabled={working}
+          disabled={working || !!isInQueue}
           className={`relative z-10 mt-2 flex w-full items-center justify-center gap-1 rounded border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${buttonConfig.className}`}
           title={
-            albumMapping
-              ? albumMapping.albumDeleted
-                ? 'Recreate album in Google Photos'
-                : 'Update album with new files'
-              : 'Create album from this folder'
+            isInQueue
+              ? `Already in queue (${queueStatus})`
+              : albumMapping
+                ? albumMapping.albumDeleted
+                  ? 'Recreate album in Google Photos'
+                  : 'Update album with new files'
+                : 'Create album from this folder'
           }
         >
           {buttonConfig.icon}

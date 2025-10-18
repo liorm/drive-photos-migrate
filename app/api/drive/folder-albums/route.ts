@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { getBatchFolderAlbumMappings } from '@/lib/album-queue-db';
+import {
+  getBatchFolderAlbumMappings,
+  getBatchActiveQueueStatus,
+} from '@/lib/album-queue-db';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
 import albumsManager from '@/lib/albums-manager';
@@ -170,16 +173,26 @@ async function handleGET(request: NextRequest) {
     }
   }
 
+  // Step 3: Get active queue status for all folders
+  const queueStatusMap = await getBatchActiveQueueStatus(userEmail, folderIds);
+
+  const queueStatus: Record<string, string> = {};
+  for (const [folderId, status] of queueStatusMap.entries()) {
+    queueStatus[folderId] = status;
+  }
+
   logger.info('Folder-album mappings retrieved successfully', {
     requestId,
     userEmail,
     totalRequested: folderIds.length,
     mappingsFound: Object.keys(mappingsResult).length,
+    activeQueueCount: Object.keys(queueStatus).length,
   });
 
   return NextResponse.json({
     success: true,
     mappings: mappingsResult,
+    queueStatus,
   });
 }
 

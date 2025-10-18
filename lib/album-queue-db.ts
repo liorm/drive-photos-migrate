@@ -848,3 +848,51 @@ export async function markAlbumAsDeleted(
 
   logger.info('Album marked as deleted', { userEmail, driveFolderId });
 }
+
+/**
+ * Get active queue status for multiple folders
+ * Returns a map of folder ID -> queue status
+ * Only includes folders that are currently in the queue (not COMPLETED, FAILED, or CANCELLED)
+ */
+export async function getBatchActiveQueueStatus(
+  userEmail: string,
+  driveFolderIds: string[]
+): Promise<Map<string, AlbumQueueStatus>> {
+  if (driveFolderIds.length === 0) {
+    return new Map();
+  }
+
+  const db = getDatabase();
+
+  const placeholders = driveFolderIds.map(() => '?').join(',');
+
+  const rows = db
+    .prepare(
+      `SELECT drive_folder_id, status
+       FROM album_queue
+       WHERE user_email = ? AND drive_folder_id IN (${placeholders})
+       AND status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED')
+       ORDER BY created_at DESC`
+    )
+    .all(userEmail, ...driveFolderIds) as Array<{
+    drive_folder_id: string;
+    status: AlbumQueueStatus;
+  }>;
+
+  const statusMap = new Map<string, AlbumQueueStatus>();
+
+  for (const row of rows) {
+    // Only keep the latest status for each folder (if multiple entries exist)
+    if (!statusMap.has(row.drive_folder_id)) {
+      statusMap.set(row.drive_folder_id, row.status);
+    }
+  }
+
+  logger.debug('Retrieved batch active queue status', {
+    userEmail,
+    requestedCount: driveFolderIds.length,
+    activeCount: statusMap.size,
+  });
+
+  return statusMap;
+}
