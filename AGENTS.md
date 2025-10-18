@@ -231,6 +231,7 @@ await manager.addToQueue({ userEmail, auth, fileIds });
 ```
 
 **Benefits**:
+
 - Consistent state across all API routes
 - Per-user concurrency control (prevent concurrent processing)
 - AbortController management for cancellation
@@ -253,6 +254,7 @@ export const GET = withErrorHandler(handleGET);
 ```
 
 **Error Handler Responsibilities**:
+
 - Catches unhandled exceptions
 - Logs with full context (using prefix-based logger)
 - Detects ExtendedError for rich error details
@@ -277,6 +279,7 @@ const { userEmail, auth: authContext } = sessionResult.data;
 ```
 
 **Session Structure** (from `types/next-auth.d.ts`):
+
 ```typescript
 interface Session {
   accessToken?: string;
@@ -292,16 +295,19 @@ interface Session {
 Token refresh is handled automatically at two levels:
 
 **Level 1: NextAuth.js JWT Callback** (`auth.ts`):
+
 - Checks if token is expired (compares Date.now() with expiresAt)
 - Calls `refreshAccessToken()` if expired
 - Returns token with `error: 'RefreshAccessTokenError'` if refresh fails
 
 **Level 2: withGoogleAuthRetry Wrapper** (`lib/token-refresh.ts`):
+
 - Wraps Google API calls
 - If API returns 401 (Unauthorized), attempts refresh and retries
 - Provides exponential backoff for retries
 
 **Middleware** (`middleware.ts`):
+
 - Checks for `RefreshAccessTokenError` in session
 - Redirects to `/auth/signin` to force re-authentication
 
@@ -310,7 +316,10 @@ Token refresh is handled automatically at two levels:
 Real-time operation tracking using EventEmitter:
 
 ```typescript
-import operationStatusManager, { OperationType, OperationStatus } from '@/lib/operation-status';
+import operationStatusManager, {
+  OperationType,
+  OperationStatus,
+} from '@/lib/operation-status';
 
 // Create an operation
 const operationId = operationStatusManager.createOperation(
@@ -335,12 +344,13 @@ operationStatusManager.completeOperation(operationId, { metadata });
 operationStatusManager.failOperation(operationId, 'Error message');
 
 // Subscribe to updates
-operationStatusManager.on('operation:updated', (operation) => {
+operationStatusManager.on('operation:updated', operation => {
   console.log(operation);
 });
 ```
 
 **Real-Time Frontend Updates**:
+
 - API endpoint `/api/operations/stream` streams operation events via Server-Sent Events (SSE)
 - `OperationNotificationsContext` listens for events
 - Components subscribe to context for real-time UI updates
@@ -348,11 +358,12 @@ operationStatusManager.on('operation:updated', (operation) => {
 ### 6. Retry Logic & Rate Limiting
 
 **Retry Wrapper** (`lib/retry.ts`):
+
 ```typescript
 export async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   options?: RetryOptions
-): Promise<T>
+): Promise<T>;
 
 // Automatically retries on:
 // - 429 (rate limit)
@@ -365,6 +376,7 @@ export async function retryWithBackoff<T>(
 ```
 
 **Backoff Controller** (`lib/backoff-controller.ts`):
+
 - Manages per-user rate limiting for Google Photos API
 - Enforces minimum delays between requests per user
 - Prevents exceeding API quotas
@@ -372,6 +384,7 @@ export async function retryWithBackoff<T>(
 ### 7. Error Handling
 
 **ExtendedError** (`lib/errors.ts`):
+
 - Preserves error context and details
 - Maintains error cause chain
 - Stores status codes and retry information
@@ -384,7 +397,7 @@ throw new ExtendedError({
     fileName: 'photo.jpg',
     statusCode: 429,
     driveFileId: 'file-123',
-  }
+  },
 });
 
 // Logger automatically extracts and logs these details
@@ -414,6 +427,7 @@ const childLogger = logger.child('sub-operation');
 ### 9. Database Layer
 
 **SQLite with better-sqlite3** (`lib/sqlite-db.ts`):
+
 - Singleton instance ensures single connection
 - WAL mode enabled for better concurrent access
 - Foreign key constraints enabled
@@ -445,12 +459,14 @@ const MIGRATIONS: Array<{ name: string; migrate: (db: Database) => void }> = [
 ```
 
 **Adding New Migrations**:
+
 1. Create migration function in `lib/migration.ts`
 2. Add to `MIGRATIONS` array (append to end, never reorder!)
 3. Migration runs once per database, tracked in `migrations` table
 4. Always check if column/table exists before altering (idempotent)
 
 **Important Migration Rules**:
+
 - **Never modify existing migrations** - they may have already run in production
 - **Never reorder migrations** - order matters for consistency
 - **Always make migrations idempotent** - use `IF NOT EXISTS` for tables, check columns before adding
@@ -458,6 +474,7 @@ const MIGRATIONS: Array<{ name: string; migrate: (db: Database) => void }> = [
 - **Migrations run in transaction** - failure stops further migrations
 
 **Query Organization**:
+
 - `uploads-db.ts`: Queries for upload history (READ-only after initial insert)
 - `upload-queue-db.ts`: Queue item persistence
 - `album-queue-db.ts`: Album queue persistence
@@ -465,6 +482,7 @@ const MIGRATIONS: Array<{ name: string; migrate: (db: Database) => void }> = [
 - `db.ts`: Generic cache queries
 
 **Key Tables**:
+
 ```
 uploads                   - Upload history (drive file ID -> photos media item ID)
 queue_items               - Pending/processing/failed uploads
@@ -481,6 +499,7 @@ migrations                - Migration tracking (name, run_at)
 ### 10. Google API Integration
 
 **Google Drive** (`lib/google-drive.ts`):
+
 - Read-only scope
 - Lists files/folders with pagination
 - Supports folder navigation
@@ -488,6 +507,7 @@ migrations                - Migration tracking (name, run_at)
 - Retries on rate limits and server errors
 
 **Google Photos** (`lib/google-photos.ts`):
+
 - Append-only scope
 - Two-step upload process:
   1. Upload bytes to `/v1/uploads` (raw binary)
@@ -498,6 +518,7 @@ migrations                - Migration tracking (name, run_at)
   3. Batch add items to album
 
 **Authentication Context** (`types/auth.ts`):
+
 ```typescript
 interface GoogleAuthContext {
   readonly accessToken: string;
@@ -509,28 +530,33 @@ interface GoogleAuthContext {
 ### 11. Frontend Component Patterns
 
 **Client Components** (`'use client'`):
+
 - Use session from NextAuth for authorization
 - Fetch data from API routes
 - Update UI based on operation events
 - Use Tailwind CSS for styling
 
 **Layout** (`app/layout.tsx`):
+
 - Sidebar for navigation
 - Main content area with max width
 - `OperationNotificationsProvider` wraps app
 - `SessionProvider` wraps app
 
 **Key Contexts**:
+
 - `OperationNotificationsContext`: Real-time operation updates (SSE)
 
 ### 12. Type Safety
 
 **Strict Mode Enabled**:
+
 - `strict: true` in `tsconfig.json`
 - No implicit `any`
 - Exhaustive switch statements required
 
 **Type Definitions Organization**:
+
 - `types/` directory for all custom types
 - Module augmentation for NextAuth (Session, JWT)
 - Google API type definitions
@@ -539,16 +565,19 @@ interface GoogleAuthContext {
 ### 13. Build & Development Considerations
 
 **Dev vs Build**:
+
 - Dev mode uses `.next-dev/` (via `NEXT_DIST_DIR` env var)
 - Build uses `.next/` (default)
 - Allows parallel dev and build sessions
 
 **Image Optimization**:
+
 - Google user avatar images from `lh3.googleusercontent.com`
 - Google Drive file icons from `drive.google.com` and `docs.google.com`
 - Configured in `next.config.ts` for Next.js Image optimization
 
 **ESLint Configuration**:
+
 - `eslint-config-next` for Next.js rules
 - Prettier integration for code formatting
 - Tailwind CSS plugin for class sorting
@@ -560,6 +589,7 @@ interface GoogleAuthContext {
 ### Adding a New API Endpoint
 
 1. Create route handler in `app/api/your-route/route.ts`:
+
 ```typescript
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
@@ -599,6 +629,7 @@ export const POST = withErrorHandler(handlePOST);
 ### Adding a New Frontend Page
 
 1. Create `app/your-page/page.tsx`:
+
 ```typescript
 'use client';
 
@@ -641,6 +672,7 @@ export default function YourPage() {
 When you need to modify the database schema (add column, add table, add index):
 
 1. Create migration function in `lib/migration.ts`:
+
 ```typescript
 function addMyNewFeature(db: Database): void {
   logger.info('Running migration: add-my-new-feature');
@@ -671,6 +703,7 @@ function addMyNewFeature(db: Database): void {
 ```
 
 2. Add to `MIGRATIONS` array at the end:
+
 ```typescript
 const MIGRATIONS: Array<{ name: string; migrate: (db: Database) => void }> = [
   {
@@ -682,7 +715,7 @@ const MIGRATIONS: Array<{ name: string; migrate: (db: Database) => void }> = [
     migrate: addAlbumTables,
   },
   {
-    name: 'add-my-new-feature',  // New migration
+    name: 'add-my-new-feature', // New migration
     migrate: addMyNewFeature,
   },
 ];
@@ -700,17 +733,20 @@ const MIGRATIONS: Array<{ name: string; migrate: (db: Database) => void }> = [
 ### Debugging
 
 **Logging**:
+
 - All important operations logged with prefix-based loggers
 - Use `createLogger('your-prefix')` in files
 - Logs include context objects automatically
 - Error logs include stack traces and error causes
 
 **Operation Status Tracking**:
+
 - Create operation with `operationStatusManager.createOperation()`
 - Monitor progress via `/api/operations/status`
 - Stream updates via `/api/operations/stream` (SSE)
 
 **Database Queries**:
+
 - SQLite database at `data/app.db`
 - Use any SQLite client to inspect
 - Schema automatically initialized on startup
@@ -729,6 +765,7 @@ pnpm test:watch       # Watch mode for development
 ```
 
 Example test (`lib/my-function.test.ts`):
+
 ```typescript
 import { describe, it, expect, beforeEach } from 'vitest';
 import { myFunction } from './my-function';
@@ -826,26 +863,31 @@ Three-layer approach:
 ### Common Issues
 
 **"RefreshAccessTokenError"**
+
 - Token refresh failed (usually credentials invalid)
 - User must sign in again
 - Middleware handles redirect automatically
 
 **Rate Limiting (429 errors)**
+
 - Reduce `QUEUE_MAX_CONCURRENCY`
 - Increase `PHOTOS_MEDIA_BATCH_SIZE` (fewer requests, more items per request)
 - Use backoff delays (automatic with retry logic)
 
 **Stuck Upload Items**
+
 - Items with status `uploading` from previous run stuck
 - `UploadsManager` automatically resets on initialization
 - Can also clear and requeue manually via API
 
 **Database Locked**
+
 - Multiple writers trying to write simultaneously
 - SQLite should handle this with WAL mode
 - Check for long-running transactions
 
 **Files Not Showing in Drive Browser**
+
 - Folder might not be cached
 - Click refresh to re-enumerate folder
 - Cache expires after certain period (check `cached_folders` table)
@@ -857,9 +899,9 @@ Three-layer approach:
 See `PLAN.md` for album creation feature details and roadmap.
 
 Key upcoming features:
+
 - Album creation from Drive folders (in progress)
 - Batch operations (create multiple albums)
 - Smart duplicate detection (hash-based)
 - Resume upload queue across sessions
 - Progress persistence to localStorage
-

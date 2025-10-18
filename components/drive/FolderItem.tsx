@@ -100,9 +100,9 @@ export function FolderItem({
       // No album exists - show Create Album
       return {
         text: 'Create Album',
-        icon: <Image className="h-3 w-3" />,
-        className:
-          'text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100',
+        // eslint-disable-next-line jsx-a11y/alt-text
+        icon: <Image className="h-3 w-3" aria-hidden="true" />,
+        className: 'text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100',
       };
     }
 
@@ -176,7 +176,8 @@ export function FolderItem({
         {/* Album Badge */}
         {albumMapping && !albumMapping.albumDeleted && (
           <div className="flex items-center gap-1 text-xs text-gray-600">
-            <Image className="h-3 w-3 text-green-600" />
+            {/* eslint-disable-next-line jsx-a11y/alt-text */}
+            <Image className="h-3 w-3 text-green-600" aria-hidden="true" />
             <span className="font-medium text-green-600">Has Album</span>
             {albumMapping.photosAlbumUrl && (
               <a
@@ -187,7 +188,7 @@ export function FolderItem({
                 className="ml-1 text-blue-600 hover:underline"
                 title="View album in Google Photos"
               >
-                <ExternalLink className="h-3 w-3 inline" />
+                <ExternalLink className="inline h-3 w-3" />
               </a>
             )}
             <span className="text-gray-400">

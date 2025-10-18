@@ -170,10 +170,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
         const folderIds = folderList.map(f => f.id).join(',');
         const folderNames = folderList.map(f => f.name).join(',');
 
-        const url = new URL(
-          '/api/drive/folder-albums',
-          window.location.origin
-        );
+        const url = new URL('/api/drive/folder-albums', window.location.origin);
         url.searchParams.set('folderIds', folderIds);
         url.searchParams.set('folderNames', folderNames);
 

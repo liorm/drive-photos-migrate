@@ -2,7 +2,6 @@ import {
   addToAlbumQueue as addToAlbumQueueDb,
   getAlbumQueueByStatus,
   updateAlbumQueueItem,
-  getAlbumQueueItem,
   addAlbumItems,
   getAlbumItems,
   updateAlbumItem,
@@ -71,7 +70,7 @@ class AlbumsManager {
    */
   async addToQueue({
     userEmail,
-    auth,
+    auth: _auth,
     driveFolderId,
     folderName,
   }: {

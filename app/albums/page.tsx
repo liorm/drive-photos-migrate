@@ -151,7 +151,11 @@ export default function AlbumsPage() {
 
   // Clear completed, failed, and cancelled items
   const handleClearCompleted = async () => {
-    if (!confirm('Clear all completed, failed, and cancelled albums from the queue?')) {
+    if (
+      !confirm(
+        'Clear all completed, failed, and cancelled albums from the queue?'
+      )
+    ) {
       return;
     }
 
@@ -334,7 +338,10 @@ export default function AlbumsPage() {
         <button
           onClick={handleClearCompleted}
           disabled={
-            stats.completed === 0 && stats.failed === 0 && stats.cancelled === 0 || clearing
+            (stats.completed === 0 &&
+              stats.failed === 0 &&
+              stats.cancelled === 0) ||
+            clearing
           }
           className="flex items-center gap-2 rounded-lg bg-gray-600 px-4 py-2 text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-300"
         >
