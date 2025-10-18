@@ -113,19 +113,23 @@ class AlbumsManager {
 
   /**
    * Lazy discovery: Check if an album with matching name exists in Google Photos
+   *
+   * NOTE: With appendonly scope, this only returns albums created by this app.
+   * This is perfect for our use case - we want to detect if we already created
+   * an album for this Drive folder, not search the user's entire library.
    */
   private async discoverExistingAlbum(
     auth: GoogleAuthContext,
     folderName: string
   ): Promise<{ id: string; productUrl: string } | null> {
-    logger.info('Searching for existing album by name', { folderName });
+    logger.info('Searching for app-created album by name', { folderName });
 
     try {
       const albums = await getAllAlbums(auth);
       const matchingAlbum = albums.find(album => album.title === folderName);
 
       if (matchingAlbum) {
-        logger.info('Found existing album with matching name', {
+        logger.info('Found existing app-created album with matching name', {
           folderName,
           albumId: matchingAlbum.id,
         });
@@ -135,11 +139,20 @@ class AlbumsManager {
         };
       }
 
-      logger.info('No existing album found with matching name', { folderName });
+      logger.info('No existing app-created album found with matching name', {
+        folderName,
+      });
       return null;
     } catch (error) {
-      logger.error('Error discovering existing album', error, { folderName });
-      // Don't fail the whole process if discovery fails
+      logger.warn(
+        'Could not discover existing album via API, will check DB only',
+        {
+          folderName,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      );
+      // Don't fail the whole process if API discovery fails
+      // DB-based discovery will still work
       return null;
     }
   }
