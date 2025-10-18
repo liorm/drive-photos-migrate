@@ -19,7 +19,7 @@ A web application built with Next.js to help you seamlessly upload files from yo
 - **Styling:** [Tailwind CSS v4](https://tailwindcss.com/)
 - **Google APIs:**
   - [Google Drive API v3](https://developers.google.com/drive/api/v3/about-sdk) (read-only scope)
-  - [Google Photos Library API](https://developers.google.com/photos/library/guides/overview) (append-only scope)
+  - [Google Photos Library API](https://developers.google.com/photos/library/guides/overview) (full scope for read/write)
 - **Database:** [lowdb v7](https://github.com/typicode/lowdb) (for local development, using a simple JSON file). Firestore is a good option for a future production deployment.
 - **Deployment:** Vercel
 

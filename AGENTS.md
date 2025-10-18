@@ -64,7 +64,7 @@ pnpm format:check       # Check formatting without changes
 - **Framework**: Next.js 15 (App Router, React 19, TypeScript)
 - **Authentication**: NextAuth.js v5 (Google OAuth 2.0)
 - **Database**: SQLite with better-sqlite3 (local development)
-- **APIs**: Google Drive API v3 (read-only), Google Photos Library API (append-only)
+- **APIs**: Google Drive API v3 (read-only), Google Photos Library API (full scope for read/write)
 - **Styling**: Tailwind CSS v4 with PostCSS
 - **Testing**: Vitest (unit tests), Playwright (E2E tests)
 - **Code Quality**: ESLint, Prettier, TypeScript strict mode
@@ -508,7 +508,7 @@ migrations                - Migration tracking (name, run_at)
 
 **Google Photos** (`lib/google-photos.ts`):
 
-- Append-only scope
+- Full scope for read/write operations (enables album discovery and management)
 - Two-step upload process:
   1. Upload bytes to `/v1/uploads` (raw binary)
   2. Create media items with `/v1/mediaItems:batchCreate`
@@ -516,6 +516,7 @@ migrations                - Migration tracking (name, run_at)
   1. Create album
   2. Create media items from Drive files
   3. Batch add items to album
+- List existing albums for duplicate prevention
 
 **Authentication Context** (`types/auth.ts`):
 
@@ -850,7 +851,7 @@ Three-layer approach:
 ## Security Considerations
 
 1. **OAuth 2.0**: Offline access with refresh tokens
-2. **Scopes**: Minimal scopes (read-only for Drive, append-only for Photos)
+2. **Scopes**: Scoped access (read-only for Drive, full access for Photos to enable album discovery and management)
 3. **Session Validation**: All API routes validate session before processing
 4. **Error Messages**: Sensitive details not leaked to frontend
 5. **Token Rotation**: Automatic token refresh before expiration
