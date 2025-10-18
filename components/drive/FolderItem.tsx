@@ -8,23 +8,33 @@ import {
   AlertCircle,
   ExternalLink,
   Image,
+  RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 import { useState } from 'react';
+import { FolderAlbumMapping } from './FileBrowser';
 
 interface FolderItemProps {
   folder: DriveFolder;
+  albumMapping?: FolderAlbumMapping;
   onNavigate: (folderId: string) => void;
+  onAlbumCreated: () => void;
 }
 
-export function FolderItem({ folder, onNavigate }: FolderItemProps) {
+export function FolderItem({
+  folder,
+  albumMapping,
+  onNavigate,
+  onAlbumCreated,
+}: FolderItemProps) {
   const syncStatus = folder.syncStatus;
-  const [creatingAlbum, setCreatingAlbum] = useState(false);
+  const [working, setWorking] = useState(false);
 
-  // Handle create album
-  const handleCreateAlbum = async (e: React.MouseEvent) => {
+  // Handle create/update album
+  const handleAlbumAction = async (e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent folder navigation
 
-    setCreatingAlbum(true);
+    setWorking(true);
     try {
       const response = await fetch('/api/albums/queue', {
         method: 'POST',
@@ -43,12 +53,16 @@ export function FolderItem({ folder, onNavigate }: FolderItemProps) {
         return;
       }
 
-      alert(`"${folder.name}" added to album creation queue!`);
+      const action = albumMapping ? 'update' : 'creation';
+      alert(`"${folder.name}" added to album ${action} queue!`);
+
+      // Refresh mappings after adding to queue
+      onAlbumCreated();
     } catch (error) {
       console.error('Error adding folder to album queue:', error);
       alert('Failed to add folder to album queue');
     } finally {
-      setCreatingAlbum(false);
+      setWorking(false);
     }
   };
 
@@ -79,6 +93,39 @@ export function FolderItem({ folder, onNavigate }: FolderItemProps) {
     // unsynced - no badge
     return null;
   };
+
+  // Determine button text and style
+  const getButtonConfig = () => {
+    if (!albumMapping) {
+      // No album exists - show Create Album
+      return {
+        text: 'Create Album',
+        icon: <Image className="h-3 w-3" />,
+        className:
+          'text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100',
+      };
+    }
+
+    if (albumMapping.albumDeleted) {
+      // Album was deleted - show Recreate Album
+      return {
+        text: 'Recreate Album',
+        icon: <RefreshCw className="h-3 w-3" />,
+        className:
+          'text-orange-700 bg-orange-50 border-orange-200 hover:bg-orange-100',
+      };
+    }
+
+    // Album exists - show Update Album
+    return {
+      text: 'Update Album',
+      icon: <RefreshCw className="h-3 w-3" />,
+      className:
+        'text-purple-700 bg-purple-50 border-purple-200 hover:bg-purple-100',
+    };
+  };
+
+  const buttonConfig = getButtonConfig();
 
   return (
     <div
@@ -116,6 +163,7 @@ export function FolderItem({ folder, onNavigate }: FolderItemProps) {
           </h3>
           <ChevronRight className="h-4 w-4 flex-shrink-0 text-gray-400 transition-transform group-hover:translate-x-1 group-hover:text-blue-600" />
         </div>
+
         <p className="text-xs text-gray-500">
           Folder
           {syncStatus && syncStatus.totalCount > 0 && (
@@ -125,15 +173,52 @@ export function FolderItem({ folder, onNavigate }: FolderItemProps) {
           )}
         </p>
 
-        {/* Create Album Button */}
+        {/* Album Badge */}
+        {albumMapping && !albumMapping.albumDeleted && (
+          <div className="flex items-center gap-1 text-xs text-gray-600">
+            <Image className="h-3 w-3 text-green-600" />
+            <span className="font-medium text-green-600">Has Album</span>
+            {albumMapping.photosAlbumUrl && (
+              <a
+                href={albumMapping.photosAlbumUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="ml-1 text-blue-600 hover:underline"
+                title="View album in Google Photos"
+              >
+                <ExternalLink className="h-3 w-3 inline" />
+              </a>
+            )}
+            <span className="text-gray-400">
+              • {albumMapping.totalItemsInAlbum} items
+            </span>
+          </div>
+        )}
+
+        {/* Deleted Album Warning */}
+        {albumMapping && albumMapping.albumDeleted && (
+          <div className="flex items-center gap-1 text-xs font-medium text-orange-600">
+            <AlertTriangle className="h-3 w-3" />
+            <span>Album Deleted</span>
+          </div>
+        )}
+
+        {/* Create/Update Album Button */}
         <button
-          onClick={handleCreateAlbum}
-          disabled={creatingAlbum}
-          className="relative z-10 mt-2 flex w-full items-center justify-center gap-1 rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
-          title="Create album from this folder"
+          onClick={handleAlbumAction}
+          disabled={working}
+          className={`relative z-10 mt-2 flex w-full items-center justify-center gap-1 rounded border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${buttonConfig.className}`}
+          title={
+            albumMapping
+              ? albumMapping.albumDeleted
+                ? 'Recreate album in Google Photos'
+                : 'Update album with new files'
+              : 'Create album from this folder'
+          }
         >
-          <Image className="h-3 w-3" />
-          {creatingAlbum ? 'Adding...' : 'Create Album'}
+          {buttonConfig.icon}
+          {working ? 'Adding...' : buttonConfig.text}
         </button>
       </div>
 

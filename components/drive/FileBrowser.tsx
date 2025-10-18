@@ -20,6 +20,16 @@ import { isAuthError, handleAuthError } from '@/lib/auth-error-handler';
 
 import { useOperationNotifications } from '@/components/OperationNotificationsContext';
 
+export interface FolderAlbumMapping {
+  photosAlbumId: string;
+  photosAlbumUrl: string;
+  createdAt: string;
+  lastUpdatedAt: string | null;
+  totalItemsInAlbum: number;
+  discoveredViaApi: boolean;
+  albumDeleted: boolean;
+}
+
 interface FileBrowserProps {
   initialFolderId?: string;
 }
@@ -60,6 +70,9 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [isFolderBeingEnqueued, setIsFolderBeingEnqueued] = useState(false);
   const [hideSynced, setHideSynced] = useState(false);
+  const [folderAlbumMappings, setFolderAlbumMappings] = useState<
+    Map<string, FolderAlbumMapping>
+  >(new Map());
 
   // Load hide synced preference from localStorage on mount
   useEffect(() => {
@@ -145,6 +158,49 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
     []
   );
 
+  // Fetch folder-album mappings
+  const fetchFolderAlbumMappings = useCallback(
+    async (folderList: DriveFolder[]) => {
+      if (folderList.length === 0) {
+        setFolderAlbumMappings(new Map());
+        return;
+      }
+
+      try {
+        const folderIds = folderList.map(f => f.id).join(',');
+        const folderNames = folderList.map(f => f.name).join(',');
+
+        const url = new URL(
+          '/api/drive/folder-albums',
+          window.location.origin
+        );
+        url.searchParams.set('folderIds', folderIds);
+        url.searchParams.set('folderNames', folderNames);
+
+        const response = await fetch(url.toString());
+
+        if (!response.ok) {
+          console.error('Failed to fetch folder-album mappings');
+          return;
+        }
+
+        const data = await response.json();
+        const mappingsMap = new Map<string, FolderAlbumMapping>();
+
+        if (data.mappings) {
+          Object.entries(data.mappings).forEach(([folderId, mapping]) => {
+            mappingsMap.set(folderId, mapping as FolderAlbumMapping);
+          });
+        }
+
+        setFolderAlbumMappings(mappingsMap);
+      } catch (err) {
+        console.error('Error fetching folder-album mappings:', err);
+      }
+    },
+    []
+  );
+
   // Load files on mount and folder change
   useEffect(() => {
     fetchFiles(currentFolderId, 0);
@@ -153,6 +209,11 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
     setCurrentPage(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentFolderId]);
+
+  // Fetch folder-album mappings when folders change
+  useEffect(() => {
+    fetchFolderAlbumMappings(folders);
+  }, [folders, fetchFolderAlbumMappings]);
 
   // Infinite scroll with Intersection Observer
   useEffect(() => {
@@ -523,8 +584,10 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
           items={items}
           selectedFiles={selectedFiles}
           queuedFiles={queuedFiles}
+          folderAlbumMappings={folderAlbumMappings}
           onToggleSelect={handleToggleSelect}
           onNavigate={handleNavigate}
+          onAlbumCreated={() => fetchFolderAlbumMappings(folders)}
         />
       )}
 
@@ -534,8 +597,10 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
           items={[]}
           selectedFiles={selectedFiles}
           queuedFiles={queuedFiles}
+          folderAlbumMappings={folderAlbumMappings}
           onToggleSelect={handleToggleSelect}
           onNavigate={handleNavigate}
+          onAlbumCreated={() => fetchFolderAlbumMappings(folders)}
         />
       )}
 

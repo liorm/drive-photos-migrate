@@ -2,7 +2,15 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { AlbumQueueItem, AlbumQueueStats } from '@/types/album-queue';
-import { Play, Square, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
+import {
+  Play,
+  Square,
+  Loader2,
+  AlertCircle,
+  ExternalLink,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { isAuthError, handleAuthError } from '@/lib/auth-error-handler';
 
 export default function AlbumsPage() {
@@ -20,6 +28,7 @@ export default function AlbumsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   // Fetch queue from API
   const fetchQueue = useCallback(async () => {
@@ -140,6 +149,73 @@ export default function AlbumsPage() {
     }
   };
 
+  // Clear completed, failed, and cancelled items
+  const handleClearCompleted = async () => {
+    if (!confirm('Clear all completed, failed, and cancelled albums from the queue?')) {
+      return;
+    }
+
+    try {
+      setClearing(true);
+      setError(null);
+
+      // Remove completed, failed, and cancelled items one by one
+      const itemsToClear = queue.filter(
+        item =>
+          item.status === 'COMPLETED' ||
+          item.status === 'FAILED' ||
+          item.status === 'CANCELLED'
+      );
+
+      for (const item of itemsToClear) {
+        await fetch(`/api/albums/queue/${item.id}`, {
+          method: 'DELETE',
+        });
+      }
+
+      await fetchQueue();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      console.error('Error clearing completed items:', err);
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  // Remove individual item
+  const handleRemoveItem = async (item: AlbumQueueItem) => {
+    if (
+      item.status === 'UPLOADING' ||
+      item.status === 'CREATING' ||
+      item.status === 'UPDATING'
+    ) {
+      alert('Cannot remove item while it is being processed');
+      return;
+    }
+
+    if (!confirm(`Remove "${item.folderName}" from the queue?`)) {
+      return;
+    }
+
+    try {
+      setError(null);
+
+      const response = await fetch(`/api/albums/queue/${item.id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to remove item');
+      }
+
+      await fetchQueue();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      console.error('Error removing item:', err);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'PENDING':
@@ -254,6 +330,21 @@ export default function AlbumsPage() {
           <Square className="h-4 w-4" />
           Stop Processing
         </button>
+
+        <button
+          onClick={handleClearCompleted}
+          disabled={
+            stats.completed === 0 && stats.failed === 0 && stats.cancelled === 0 || clearing
+          }
+          className="flex items-center gap-2 rounded-lg bg-gray-600 px-4 py-2 text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+        >
+          {clearing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="h-4 w-4" />
+          )}
+          Clear Completed
+        </button>
       </div>
 
       {/* Queue List */}
@@ -320,8 +411,23 @@ export default function AlbumsPage() {
                     )}
                   </div>
 
-                  <div className="text-sm text-gray-500">
-                    {new Date(item.createdAt).toLocaleString()}
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="text-sm text-gray-500">
+                      {new Date(item.createdAt).toLocaleString()}
+                    </div>
+                    <button
+                      onClick={() => handleRemoveItem(item)}
+                      disabled={
+                        item.status === 'UPLOADING' ||
+                        item.status === 'CREATING' ||
+                        item.status === 'UPDATING'
+                      }
+                      className="flex items-center gap-1 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Remove from queue"
+                    >
+                      <X className="h-3 w-3" />
+                      Remove
+                    </button>
                   </div>
                 </div>
               </div>
