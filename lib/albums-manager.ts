@@ -480,7 +480,7 @@ class AlbumsManager {
       needsUpload: filesToUpload.length,
     });
 
-    // Step 7: Add non-uploaded files to UploadsManager queue
+    // Step 7: Add non-uploaded files to UploadsManager queue and start processing
     if (filesToUpload.length > 0) {
       logger.info('Adding files to upload queue', {
         userEmail,
@@ -492,6 +492,20 @@ class AlbumsManager {
         userEmail,
         auth,
         fileIds: filesToUpload,
+      });
+
+      // Start upload processing to actually process the queued files
+      logger.info('Starting upload processing for queued files', {
+        userEmail,
+        albumQueueId: albumQueueItem.id,
+      });
+
+      // Start processing in the background (don't await - let it run concurrently)
+      uploadsManager.startProcessing(userEmail, auth).catch(error => {
+        logger.error('Error in background upload processing', error, {
+          userEmail,
+          albumQueueId: albumQueueItem.id,
+        });
       });
     }
 
