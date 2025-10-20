@@ -3,21 +3,28 @@
 import { DriveFile, DriveFolder } from '@/types/google-drive';
 import { FileItem } from './FileItem';
 import { FolderItem } from './FolderItem';
+import { FolderAlbumMapping } from './FileBrowser';
 
 interface FileGridProps {
   items: (DriveFile | DriveFolder)[];
   selectedFiles: Set<string>;
   queuedFiles: Set<string>;
+  folderAlbumMappings: Map<string, FolderAlbumMapping>;
+  folderQueueStatus: Map<string, string>;
   onToggleSelect: (file: DriveFile) => void;
   onNavigate: (folderId: string) => void;
+  onAlbumCreated: () => void;
 }
 
 export function FileGrid({
   items,
   selectedFiles,
   queuedFiles,
+  folderAlbumMappings,
+  folderQueueStatus,
   onToggleSelect,
   onNavigate,
+  onAlbumCreated,
 }: FileGridProps) {
   if (items.length === 0) {
     return (
@@ -68,7 +75,10 @@ export function FileGrid({
               <FolderItem
                 key={folder.id}
                 folder={folder}
+                albumMapping={folderAlbumMappings.get(folder.id)}
+                queueStatus={folderQueueStatus.get(folder.id)}
                 onNavigate={onNavigate}
+                onAlbumCreated={onAlbumCreated}
               />
             ))}
           </div>

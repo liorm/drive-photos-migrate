@@ -3,9 +3,12 @@ node_modules
 /.pnp
 .pnp.js
 .yarn/install-state.gz
+/.pnpm-store
 
 # testing
 /coverage
+/test-results
+/playwright-report
 
 # next.js
 /.next/
@@ -37,6 +40,6 @@ pnpm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# lowdb database
+# database
 db.json
 /data

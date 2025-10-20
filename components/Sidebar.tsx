@@ -10,6 +10,7 @@ import {
   ListOrdered,
   Bell,
   Loader2,
+  Image as ImageIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -22,6 +23,7 @@ const menuItems = [
   { name: 'Dashboard', href: '/', icon: Home },
   { name: 'Browse', href: '/drive', icon: FolderOpen },
   { name: 'Upload Queue', href: '/queue', icon: ListOrdered },
+  { name: 'Albums', href: '/albums', icon: ImageIcon },
 ];
 
 function DockedOperations() {
