@@ -421,6 +421,60 @@ export async function clearCompletedAlbumItems(
 }
 
 /**
+ * Clear all items from album queue (dangerous operation)
+ */
+export async function clearAllAlbumItems(userEmail: string): Promise<number> {
+  logger.info('Clearing all items from album queue', { userEmail });
+
+  const db = getDatabase();
+
+  const result = db
+    .prepare(`DELETE FROM album_queue WHERE user_email = ?`)
+    .run(userEmail);
+
+  const removedCount = result.changes;
+
+  if (removedCount > 0) {
+    logger.info('Cleared all album items', { userEmail, removedCount });
+  } else {
+    logger.debug('No album items to clear', { userEmail });
+  }
+
+  return removedCount;
+}
+
+/**
+ * Re-queue failed album items
+ * Sets status back to PENDING and clears error/timestamps
+ * Returns the number of items re-queued.
+ */
+export async function requeueFailedAlbumItems(
+  userEmail: string
+): Promise<number> {
+  logger.info('Re-queuing failed album items', { userEmail });
+
+  const db = getDatabase();
+
+  const result = db
+    .prepare(
+      `UPDATE album_queue
+       SET status = 'PENDING', mode = NULL, started_at = NULL, completed_at = NULL, error = NULL
+       WHERE user_email = ? AND status = 'FAILED'`
+    )
+    .run(userEmail);
+
+  const requeuedCount = result.changes || 0;
+
+  if (requeuedCount > 0) {
+    logger.info('Re-queued failed album items', { userEmail, requeuedCount });
+  } else {
+    logger.debug('No failed album items to re-queue', { userEmail });
+  }
+
+  return requeuedCount;
+}
+
+/**
  * Get album queue statistics
  */
 export async function getAlbumQueueStats(
