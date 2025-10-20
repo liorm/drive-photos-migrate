@@ -5,6 +5,7 @@ import {
   isFolderCached,
   getCachedFolderPage,
   syncFolderToCache,
+  syncFolderToCacheRecursively,
 } from '@/lib/drive-cache';
 import { getUploadRecords } from '@/lib/uploads-db';
 import {
@@ -37,6 +38,10 @@ async function handleGET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const folderId = searchParams.get('folderId') || 'root';
   const refresh = searchParams.get('refresh') === 'true';
+  const recursive = searchParams.get('recursive') === 'true';
+  const maxDepth = searchParams.get('maxDepth')
+    ? parseInt(searchParams.get('maxDepth')!, 10)
+    : undefined;
   const page = parseInt(searchParams.get('page') || '0', 10);
   const pageSize = parseInt(searchParams.get('pageSize') || '50', 10);
 
@@ -45,6 +50,8 @@ async function handleGET(request: NextRequest) {
     userEmail,
     folderId,
     refresh,
+    recursive,
+    maxDepth,
     page,
     pageSize,
   });
@@ -78,8 +85,17 @@ async function handleGET(request: NextRequest) {
       requestId,
       userEmail,
       folderId,
+      recursive,
+      maxDepth,
     });
-    await syncFolderToCache(userEmail, folderId, authContext);
+
+    if (recursive) {
+      await syncFolderToCacheRecursively(userEmail, folderId, authContext, {
+        maxDepth,
+      });
+    } else {
+      await syncFolderToCache(userEmail, folderId, authContext);
+    }
   }
 
   // Get paginated data from cache

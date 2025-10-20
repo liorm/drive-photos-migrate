@@ -13,6 +13,10 @@ const MIGRATIONS: Array<{ name: string; migrate: (db: Database) => void }> = [
     name: 'add-album-tables',
     migrate: addAlbumTables,
   },
+  {
+    name: 'add-recursive-sync-tracking',
+    migrate: addRecursiveSyncTracking,
+  },
 ];
 
 function addFileSizeToUploads(db: Database): void {
@@ -138,6 +142,33 @@ function addAlbumTables(db: Database): void {
   `);
 
   logger.info('Album tables created successfully');
+}
+
+function addRecursiveSyncTracking(db: Database): void {
+  logger.info('Running migration: add-recursive-sync-tracking');
+
+  // Check if the column already exists
+  const columns = db.pragma('table_info(cached_folders)') as Array<{
+    name: string;
+  }>;
+  const hasRecursiveColumn = columns.some(col => col.name === 'recursive_sync');
+  const hasDepthColumn = columns.some(col => col.name === 'max_depth');
+
+  if (!hasRecursiveColumn) {
+    logger.info('Adding recursive_sync column to cached_folders table');
+    db.exec(
+      'ALTER TABLE cached_folders ADD COLUMN recursive_sync INTEGER NOT NULL DEFAULT 0'
+    );
+  }
+
+  if (!hasDepthColumn) {
+    logger.info('Adding max_depth column to cached_folders table');
+    db.exec(
+      'ALTER TABLE cached_folders ADD COLUMN max_depth INTEGER DEFAULT NULL'
+    );
+  }
+
+  logger.info('Recursive sync tracking columns added successfully');
 }
 
 export function runMigrations(db: Database): void {

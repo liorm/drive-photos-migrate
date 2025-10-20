@@ -70,6 +70,8 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [isFolderBeingEnqueued, setIsFolderBeingEnqueued] = useState(false);
   const [hideSynced, setHideSynced] = useState(false);
+  const [recursiveFetch, setRecursiveFetch] = useState(false);
+  const [maxDepth, setMaxDepth] = useState<number>(3);
   const [folderAlbumMappings, setFolderAlbumMappings] = useState<
     Map<string, FolderAlbumMapping>
   >(new Map());
@@ -113,6 +115,12 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
         url.searchParams.set('page', page.toString());
         url.searchParams.set('pageSize', '50');
         if (refresh) url.searchParams.set('refresh', 'true');
+        if (recursiveFetch) {
+          url.searchParams.set('recursive', 'true');
+          if (maxDepth > 0) {
+            url.searchParams.set('maxDepth', maxDepth.toString());
+          }
+        }
 
         const response = await fetch(url.toString());
 
@@ -158,7 +166,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
         setLoadingMore(false);
       }
     },
-    []
+    [recursiveFetch, maxDepth]
   );
 
   // Fetch folder-album mappings and queue status
@@ -455,6 +463,37 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
               />
               Refresh
             </button>
+            <div className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-1.5">
+              <label className="flex cursor-pointer items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={recursiveFetch}
+                  onChange={e => setRecursiveFetch(e.target.checked)}
+                  className="h-4 w-4 cursor-pointer rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700">
+                  Recursive
+                </span>
+              </label>
+              {recursiveFetch && (
+                <>
+                  <span className="text-gray-400">|</span>
+                  <label className="flex items-center gap-1.5">
+                    <span className="text-sm text-gray-600">Depth:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={maxDepth}
+                      onChange={e =>
+                        setMaxDepth(Math.max(1, parseInt(e.target.value) || 1))
+                      }
+                      className="w-14 rounded border border-gray-300 px-2 py-0.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </label>
+                </>
+              )}
+            </div>
             <button
               onClick={handleSelectAll}
               disabled={filteredFiles.length === 0}
