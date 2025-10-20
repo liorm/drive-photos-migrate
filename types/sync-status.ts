@@ -41,3 +41,15 @@ export interface SyncStatusCacheData {
     [userEmail: string]: UserSyncStatusCache;
   };
 }
+
+/**
+ * Result of recursive sync status refresh operation
+ */
+export interface RecursiveSyncRefreshResult {
+  folderId: string;
+  folderName?: string;
+  status: SyncStatusDetail;
+  subfolders: RecursiveSyncRefreshResult[];
+  processedCount: number; // Total number of folders processed
+  durationMs: number;
+}
