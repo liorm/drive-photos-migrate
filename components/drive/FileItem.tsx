@@ -2,7 +2,7 @@
 
 import { DriveFile } from '@/types/google-drive';
 import { FileImage, FileVideo, File, CheckCircle2, Clock } from 'lucide-react';
-import Image from 'next/image';
+import { LazyImage } from '@/components/ui/LazyImage';
 
 interface FileItemProps {
   file: DriveFile;
@@ -55,7 +55,7 @@ export function FileItem({
       {/* Thumbnail or icon */}
       <div className="relative mb-3 flex h-32 items-center justify-center overflow-hidden rounded-md bg-gray-100">
         {file.thumbnailLink ? (
-          <Image
+          <LazyImage
             src={file.thumbnailLink}
             alt={file.name}
             width={128}
