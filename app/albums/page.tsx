@@ -244,17 +244,18 @@ export default function AlbumsPage() {
     stats.uploading > 0 || stats.creating > 0 || stats.updating > 0;
 
   return (
-    <div className="container mx-auto max-w-6xl p-6">
-      <div className="mb-6">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 p-8 text-white shadow-lg">
         <h1 className="mb-2 text-3xl font-bold">Album Creation Queue</h1>
-        <p className="text-gray-600">
+        <p className="text-purple-100">
           Create Google Photos albums from your Drive folders
         </p>
       </div>
 
       {/* Error Display */}
       {error && (
-        <div className="mb-6 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
+        <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
           <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" />
           <div className="flex-1">
             <h3 className="font-semibold text-red-900">Error</h3>
@@ -264,72 +265,77 @@ export default function AlbumsPage() {
       )}
 
       {/* Stats Cards */}
-      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-8">
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <div className="text-2xl font-bold">{stats.total}</div>
-          <div className="text-sm text-gray-600">Total</div>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-8">
+        <div className="rounded-lg bg-white p-4 shadow-md">
+          <p className="text-xs font-medium text-gray-500">Total</p>
+          <p className="mt-1 text-2xl font-bold text-gray-900">{stats.total}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <div className="text-2xl font-bold text-gray-600">
+        <div className="rounded-lg bg-white p-4 shadow-md">
+          <p className="text-xs font-medium text-gray-500">Pending</p>
+          <p className="mt-1 text-2xl font-bold text-gray-600">
             {stats.pending}
-          </div>
-          <div className="text-sm text-gray-600">Pending</div>
+          </p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <div className="text-2xl font-bold text-blue-600">
+        <div className="rounded-lg bg-white p-4 shadow-md">
+          <p className="text-xs font-medium text-blue-500">Uploading</p>
+          <p className="mt-1 text-2xl font-bold text-blue-600">
             {stats.uploading}
-          </div>
-          <div className="text-sm text-gray-600">Uploading</div>
+          </p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <div className="text-2xl font-bold text-purple-600">
+        <div className="rounded-lg bg-white p-4 shadow-md">
+          <p className="text-xs font-medium text-purple-500">Creating</p>
+          <p className="mt-1 text-2xl font-bold text-purple-600">
             {stats.creating}
-          </div>
-          <div className="text-sm text-gray-600">Creating</div>
+          </p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <div className="text-2xl font-bold text-purple-600">
+        <div className="rounded-lg bg-white p-4 shadow-md">
+          <p className="text-xs font-medium text-purple-500">Updating</p>
+          <p className="mt-1 text-2xl font-bold text-purple-600">
             {stats.updating}
-          </div>
-          <div className="text-sm text-gray-600">Updating</div>
+          </p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <div className="text-2xl font-bold text-green-600">
+        <div className="rounded-lg bg-white p-4 shadow-md">
+          <p className="text-xs font-medium text-green-500">Completed</p>
+          <p className="mt-1 text-2xl font-bold text-green-600">
             {stats.completed}
-          </div>
-          <div className="text-sm text-gray-600">Completed</div>
+          </p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <div className="text-2xl font-bold text-red-600">{stats.failed}</div>
-          <div className="text-sm text-gray-600">Failed</div>
+        <div className="rounded-lg bg-white p-4 shadow-md">
+          <p className="text-xs font-medium text-red-500">Failed</p>
+          <p className="mt-1 text-2xl font-bold text-red-600">{stats.failed}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <div className="text-2xl font-bold text-orange-600">
+        <div className="rounded-lg bg-white p-4 shadow-md">
+          <p className="text-xs font-medium text-orange-500">Cancelled</p>
+          <p className="mt-1 text-2xl font-bold text-orange-600">
             {stats.cancelled}
-          </div>
-          <div className="text-sm text-gray-600">Cancelled</div>
+          </p>
         </div>
       </div>
 
       {/* Control Buttons */}
-      <div className="mb-6 flex gap-3">
+      <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <button
           onClick={handleProcess}
           disabled={stats.pending === 0 || processing || isProcessingActive}
-          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+          className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {processing ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Processing...
+            </>
           ) : (
-            <Play className="h-4 w-4" />
+            <>
+              <Play className="h-4 w-4" />
+              Start Processing ({stats.pending})
+            </>
           )}
-          Start Processing
         </button>
 
         <button
           onClick={handleStop}
           disabled={!isProcessingActive}
-          className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+          className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Square className="h-4 w-4" />
           Stop Processing
@@ -343,22 +349,25 @@ export default function AlbumsPage() {
               stats.cancelled === 0) ||
             clearing
           }
-          className="flex items-center gap-2 rounded-lg bg-gray-600 px-4 py-2 text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+          className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {clearing ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Clearing...
+            </>
           ) : (
-            <Trash2 className="h-4 w-4" />
+            <>
+              <Trash2 className="h-4 w-4" />
+              Clear Completed/Failed
+            </>
           )}
-          Clear Completed
         </button>
       </div>
 
       {/* Queue List */}
-      <div className="rounded-lg border border-gray-200 bg-white">
-        <div className="border-b border-gray-200 p-4">
-          <h2 className="text-lg font-semibold">Queue Items</h2>
-        </div>
+      <div className="rounded-lg bg-white p-6 shadow-md">
+        <h2 className="mb-4 text-lg font-semibold">Queue Items</h2>
 
         {loading ? (
           <div className="p-8 text-center">

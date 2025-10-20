@@ -11,13 +11,11 @@ export default async function DrivePage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Google Drive</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Browse and select files to upload to Google Photos
-          </p>
-        </div>
+      <div className="rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 p-8 text-white shadow-lg">
+        <h1 className="mb-2 text-3xl font-bold">Google Drive</h1>
+        <p className="text-purple-100">
+          Browse and select files to upload to Google Photos
+        </p>
       </div>
 
       {/* File Browser */}
