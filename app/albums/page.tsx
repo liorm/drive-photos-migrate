@@ -37,12 +37,16 @@ export default function AlbumsPage() {
   const [requeuing, setRequeuing] = useState(false);
 
   // Fetch queue from API
-  const fetchQueue = useCallback(async () => {
+  const fetchQueue = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       setError(null);
 
-      const response = await fetch('/api/albums/queue');
+      const response = await fetch('/api/albums/queue', {
+        cache: 'no-store',
+      });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -74,7 +78,9 @@ export default function AlbumsPage() {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
       console.error('Error fetching album queue:', err);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -83,12 +89,12 @@ export default function AlbumsPage() {
     fetchQueue();
   }, [fetchQueue]);
 
-  // Auto-refresh queue every 3 seconds when processing
+  // Auto-refresh queue every 2 seconds when processing (silent to avoid loading flicker)
   useEffect(() => {
     if (stats.uploading > 0 || stats.creating > 0 || stats.updating > 0) {
       const interval = setInterval(() => {
-        fetchQueue();
-      }, 3000);
+        fetchQueue(true); // Silent refresh
+      }, 2000);
 
       return () => clearInterval(interval);
     }
@@ -118,7 +124,7 @@ export default function AlbumsPage() {
         throw new Error(errorMessage);
       }
 
-      await fetchQueue();
+      await fetchQueue(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
       console.error('Error starting album processing:', err);
@@ -149,7 +155,7 @@ export default function AlbumsPage() {
         throw new Error(errorMessage);
       }
 
-      await fetchQueue();
+      await fetchQueue(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
       console.error('Error stopping album processing:', err);
@@ -183,7 +189,7 @@ export default function AlbumsPage() {
         throw new Error(errorMessage);
       }
 
-      await fetchQueue();
+      await fetchQueue(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
       console.error('Error clearing items:', err);
@@ -216,7 +222,7 @@ export default function AlbumsPage() {
         throw new Error(errorMessage);
       }
 
-      await fetchQueue();
+      await fetchQueue(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
       console.error('Error clearing all items:', err);
@@ -249,7 +255,7 @@ export default function AlbumsPage() {
         throw new Error(errorMessage);
       }
 
-      await fetchQueue();
+      await fetchQueue(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
       console.error('Error re-queuing failed items:', err);
@@ -279,7 +285,7 @@ export default function AlbumsPage() {
         throw new Error(errorMessage);
       }
 
-      await fetchQueue();
+      await fetchQueue(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
       console.error('Error removing item:', err);
@@ -458,7 +464,7 @@ export default function AlbumsPage() {
         </div>
 
         <button
-          onClick={fetchQueue}
+          onClick={() => fetchQueue(false)}
           disabled={loading}
           className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
