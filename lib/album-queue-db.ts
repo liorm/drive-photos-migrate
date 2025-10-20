@@ -636,6 +636,72 @@ export async function updateAlbumItem(
 }
 
 /**
+ * Remove duplicate album items (keeps the oldest one for each driveFileId)
+ */
+export async function removeDuplicateAlbumItems(
+  albumQueueId: string
+): Promise<number> {
+  logger.info('Removing duplicate album items', { albumQueueId });
+
+  const db = getDatabase();
+
+  // Find duplicates: same album_queue_id and drive_file_id
+  const duplicates = db
+    .prepare(
+      `SELECT drive_file_id, COUNT(*) as count
+       FROM album_items
+       WHERE album_queue_id = ?
+       GROUP BY drive_file_id
+       HAVING count > 1`
+    )
+    .all(albumQueueId) as Array<{ drive_file_id: string; count: number }>;
+
+  if (duplicates.length === 0) {
+    logger.debug('No duplicate album items found', { albumQueueId });
+    return 0;
+  }
+
+  let totalRemoved = 0;
+
+  // For each duplicate drive_file_id, keep the oldest (first inserted) and delete the rest
+  for (const dup of duplicates) {
+    const items = db
+      .prepare(
+        `SELECT id, added_at
+         FROM album_items
+         WHERE album_queue_id = ? AND drive_file_id = ?
+         ORDER BY added_at ASC`
+      )
+      .all(albumQueueId, dup.drive_file_id) as Array<{
+      id: string;
+      added_at: string;
+    }>;
+
+    // Keep the first one, delete the rest
+    const toDelete = items.slice(1);
+
+    for (const item of toDelete) {
+      db.prepare('DELETE FROM album_items WHERE id = ?').run(item.id);
+      totalRemoved++;
+    }
+
+    logger.debug('Removed duplicate album items for file', {
+      albumQueueId,
+      driveFileId: dup.drive_file_id,
+      kept: items[0].id,
+      removed: toDelete.length,
+    });
+  }
+
+  logger.info('Duplicate album items removed', {
+    albumQueueId,
+    totalRemoved,
+  });
+
+  return totalRemoved;
+}
+
+/**
  * Get album items by status
  */
 export async function getAlbumItemsByStatus(

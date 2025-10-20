@@ -124,7 +124,10 @@ export default function AlbumsPage() {
         throw new Error(errorMessage);
       }
 
-      await fetchQueue(false);
+      // Wait a moment for background processing to start updating statuses
+      setTimeout(() => {
+        fetchQueue(false);
+      }, 500);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
       console.error('Error starting album processing:', err);

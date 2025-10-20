@@ -8,6 +8,7 @@ import {
   getAlbumItemsByStatus,
   upsertFolderAlbumMapping,
   getFolderAlbumMapping,
+  removeDuplicateAlbumItems,
 } from './album-queue-db';
 import { listDriveFiles } from './google-drive';
 import { GoogleAuthContext } from '@/types/auth';
@@ -425,16 +426,38 @@ class AlbumsManager {
       totalFiles: fileIds.length,
     });
 
-    // Step 5: Create album_items records for all files
-    await addAlbumItems(albumQueueItem.id, fileIds);
+    // Step 5: Create album_items records for all files (if not already created)
+    const existingAlbumItems = await getAlbumItems(albumQueueItem.id);
 
-    logger.info('Album items added to database', {
-      userEmail,
-      albumQueueId: albumQueueItem.id,
-      fileCount: fileIds.length,
-    });
+    if (existingAlbumItems.length === 0) {
+      // First time processing - create album items
+      await addAlbumItems(albumQueueItem.id, fileIds);
+      logger.info('Album items added to database', {
+        userEmail,
+        albumQueueId: albumQueueItem.id,
+        fileCount: fileIds.length,
+      });
+    } else {
+      logger.info('Album items already exist (retry), skipping creation', {
+        userEmail,
+        albumQueueId: albumQueueItem.id,
+        existingCount: existingAlbumItems.length,
+      });
+    }
 
-    // Step 6: Check which files are already uploaded
+    // Step 6: Clean up any duplicate album_items from previous failed attempts
+    const removedDuplicates = await removeDuplicateAlbumItems(
+      albumQueueItem.id
+    );
+    if (removedDuplicates > 0) {
+      logger.info('Cleaned up duplicate album items from previous retries', {
+        userEmail,
+        albumQueueId: albumQueueItem.id,
+        removed: removedDuplicates,
+      });
+    }
+
+    // Step 7: Check which files are already uploaded
 
     const albumItems = await getAlbumItems(albumQueueItem.id);
     const filesToUpload: string[] = [];
@@ -480,7 +503,7 @@ class AlbumsManager {
       needsUpload: filesToUpload.length,
     });
 
-    // Step 7: Add non-uploaded files to UploadsManager queue and start processing
+    // Step 8: Add non-uploaded files to UploadsManager queue and start processing
     if (filesToUpload.length > 0) {
       logger.info('Adding files to upload queue', {
         userEmail,
@@ -509,7 +532,7 @@ class AlbumsManager {
       });
     }
 
-    // Step 8: Wait for all files to be uploaded
+    // Step 9: Wait for all files to be uploaded
     if (filesToUpload.length > 0) {
       logger.info('Waiting for files to be uploaded', {
         userEmail,
@@ -591,7 +614,7 @@ class AlbumsManager {
       }
     }
 
-    // Step 9: Create or update album
+    // Step 10: Create or update album
     await updateAlbumQueueItem(userEmail, albumQueueItem.id, {
       status: mode === 'CREATE' ? 'CREATING' : 'UPDATING',
     });
