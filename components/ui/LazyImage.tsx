@@ -45,10 +45,11 @@ class ImageLoadQueue {
 }
 
 // Global singleton instance
-const imageLoadQueue = new ImageLoadQueue(6);
+const imageLoadQueue = new ImageLoadQueue(10);
 
 interface LazyImageProps {
-  src: string;
+  src?: string;
+  fileId?: string; // If provided, uses proxy API for authenticated thumbnail fetch
   alt: string;
   width: number;
   height: number;
@@ -59,6 +60,7 @@ interface LazyImageProps {
 
 export function LazyImage({
   src,
+  fileId,
   alt,
   width,
   height,
@@ -66,6 +68,12 @@ export function LazyImage({
   placeholder,
   unoptimized = true,
 }: LazyImageProps) {
+  // Determine the image source
+  const imageSrc = fileId ? `/api/drive/thumbnail?fileId=${fileId}` : src;
+
+  if (!imageSrc) {
+    throw new Error('Either src or fileId must be provided to LazyImage');
+  }
   const [isVisible, setIsVisible] = useState(false);
   const [shouldLoad, setShouldLoad] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -117,11 +125,12 @@ export function LazyImage({
     <div ref={imgRef} className={className} style={{ width, height }}>
       {shouldLoad && !hasError ? (
         <Image
-          src={src}
+          src={imageSrc}
           alt={alt}
           width={width}
           height={height}
           className={className}
+          style={{ width: 'auto', height: 'auto' }}
           unoptimized={unoptimized}
           onError={() => setHasError(true)}
         />

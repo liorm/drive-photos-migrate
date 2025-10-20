@@ -56,7 +56,7 @@ export function FileItem({
       <div className="relative mb-3 flex h-32 items-center justify-center overflow-hidden rounded-md bg-gray-100">
         {file.thumbnailLink ? (
           <LazyImage
-            src={file.thumbnailLink}
+            fileId={file.id}
             alt={file.name}
             width={128}
             height={128}
