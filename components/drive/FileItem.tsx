@@ -47,7 +47,7 @@ export function FileItem({
           ? 'border-blue-500 bg-blue-50'
           : 'border-gray-200 hover:border-gray-300'
       } ${isIgnored ? 'opacity-60' : ''}`}
-      onClick={() => !isIgnored && onToggleSelect(file)}
+      onClick={() => onToggleSelect(file)}
     >
       {/* Selection checkbox */}
       <div className="absolute top-2 right-2 z-10">
@@ -57,7 +57,6 @@ export function FileItem({
           onChange={() => onToggleSelect(file)}
           className="h-5 w-5 cursor-pointer rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
           onClick={e => e.stopPropagation()}
-          disabled={isIgnored}
         />
       </div>
 

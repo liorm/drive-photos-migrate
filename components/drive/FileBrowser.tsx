@@ -386,13 +386,6 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
 
   // Toggle file selection
   const handleToggleSelect = (file: DriveFile) => {
-    // Prevent selection of ignored files
-    if (file.isIgnored) {
-      setUploadProgress('Cannot select ignored files');
-      setTimeout(() => setUploadProgress(null), 2000);
-      return;
-    }
-
     setSelectedFiles(prev => {
       const next = new Set(prev);
       if (next.has(file.id)) {
@@ -404,11 +397,18 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
     });
   };
 
-  // Ignore selected files
+  // Ignore selected non-ignored files
   const handleIgnoreSelected = async () => {
     if (selectedFiles.size === 0) return;
 
-    const fileCount = selectedFiles.size;
+    // Only ignore non-ignored files
+    const filesToIgnore = files.filter(
+      f => selectedFiles.has(f.id) && !f.isIgnored
+    );
+
+    if (filesToIgnore.length === 0) return;
+
+    const fileCount = filesToIgnore.length;
     setUploadProgress(`Ignoring ${fileCount} file(s)...`);
 
     try {
@@ -416,12 +416,12 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
       let successCount = 0;
       let errorCount = 0;
 
-      for (const fileId of selectedFiles) {
+      for (const file of filesToIgnore) {
         try {
           const response = await fetch('/api/files/ignore', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fileId }),
+            body: JSON.stringify({ fileId: file.id }),
           });
 
           if (response.ok) {
@@ -450,6 +450,64 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
     } catch (err) {
       console.error('Error ignoring files:', err);
       setUploadProgress('Failed to ignore files');
+    } finally {
+      setTimeout(() => setUploadProgress(null), 3000);
+    }
+  };
+
+  // Unignore selected ignored files
+  const handleUnignoreSelected = async () => {
+    if (selectedFiles.size === 0) return;
+
+    // Only unignore ignored files
+    const filesToUnignore = files.filter(
+      f => selectedFiles.has(f.id) && f.isIgnored
+    );
+
+    if (filesToUnignore.length === 0) return;
+
+    const fileCount = filesToUnignore.length;
+    setUploadProgress(`Unignoring ${fileCount} file(s)...`);
+
+    try {
+      // Unignore files one by one
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const file of filesToUnignore) {
+        try {
+          const response = await fetch('/api/files/ignore', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileId: file.id }),
+          });
+
+          if (response.ok) {
+            successCount++;
+          } else {
+            errorCount++;
+          }
+        } catch {
+          errorCount++;
+        }
+      }
+
+      // Clear selection
+      setSelectedFiles(new Set());
+
+      // Refresh file list
+      await fetchFiles(currentFolderId, 0, true);
+
+      if (errorCount === 0) {
+        setUploadProgress(`Successfully unignored ${successCount} file(s)`);
+      } else {
+        setUploadProgress(
+          `Unignored ${successCount} file(s), ${errorCount} failed`
+        );
+      }
+    } catch (err) {
+      console.error('Error unignoring files:', err);
+      setUploadProgress('Failed to unignore files');
     } finally {
       setTimeout(() => setUploadProgress(null), 3000);
     }
@@ -577,6 +635,13 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
 
   // Combine folders and files for display
   const items = [...filteredFolders, ...filteredFiles];
+
+  // Calculate ignored vs non-ignored files in selection
+  const selectedFilesArray = files.filter(f => selectedFiles.has(f.id));
+  const selectedIgnoredFiles = selectedFilesArray.filter(f => f.isIgnored);
+  const selectedNonIgnoredFiles = selectedFilesArray.filter(f => !f.isIgnored);
+  const hasIgnoredSelected = selectedIgnoredFiles.length > 0;
+  const hasNonIgnoredSelected = selectedNonIgnoredFiles.length > 0;
 
   return (
     <div className="space-y-4">
@@ -749,31 +814,48 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
 
         {selectedFiles.size > 0 && (
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleAddToQueue}
-              disabled={uploading}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {uploading ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Adding...
-                </span>
-              ) : (
-                <>
-                  Add {selectedFiles.size} file
-                  {selectedFiles.size !== 1 ? 's' : ''} to Queue
-                </>
-              )}
-            </button>
-            <button
-              onClick={handleIgnoreSelected}
-              disabled={uploading}
-              className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <EyeOff className="h-4 w-4" />
-              Ignore {selectedFiles.size}
-            </button>
+            {/* Only show Add to Queue for non-ignored files */}
+            {hasNonIgnoredSelected && (
+              <button
+                onClick={handleAddToQueue}
+                disabled={uploading}
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {uploading ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Adding...
+                  </span>
+                ) : (
+                  <>
+                    Add {selectedNonIgnoredFiles.length} file
+                    {selectedNonIgnoredFiles.length !== 1 ? 's' : ''} to Queue
+                  </>
+                )}
+              </button>
+            )}
+            {/* Show Ignore button if non-ignored files are selected */}
+            {hasNonIgnoredSelected && (
+              <button
+                onClick={handleIgnoreSelected}
+                disabled={uploading}
+                className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <EyeOff className="h-4 w-4" />
+                Ignore {selectedNonIgnoredFiles.length}
+              </button>
+            )}
+            {/* Show Unignore button if ignored files are selected */}
+            {hasIgnoredSelected && (
+              <button
+                onClick={handleUnignoreSelected}
+                disabled={uploading}
+                className="flex items-center gap-1 rounded-md border border-green-300 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 transition-colors hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Eye className="h-4 w-4" />
+                Unignore {selectedIgnoredFiles.length}
+              </button>
+            )}
           </div>
         )}
       </div>
