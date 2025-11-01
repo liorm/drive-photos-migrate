@@ -16,6 +16,7 @@ import {
   UNPAGINATED_PAGE_SIZE,
 } from './db';
 import { isFileUploaded, getUploadRecords } from './uploads-db';
+import { getIgnoredFileIds } from './ignored-files-db';
 import { createLogger } from '@/lib/logger';
 import { GoogleAuthContext } from '@/types/auth';
 
@@ -169,21 +170,43 @@ export async function calculateFolderSyncStatus(
   // 1. Check all files in this folder
   if (files.length > 0) {
     const fileIds = files.map(f => f.id);
-    const uploadRecords = await getUploadRecords(userEmail, fileIds);
 
-    const syncedFilesCount = Array.from(uploadRecords.values()).filter(
-      r => r !== null
-    ).length;
+    // Get ignored file IDs to exclude from sync calculations
+    const ignoredFileIds = getIgnoredFileIds(userEmail, fileIds);
 
-    totalSyncedCount += syncedFilesCount;
-    totalItemCount += files.length;
+    // Filter out ignored files
+    const nonIgnoredFileIds = fileIds.filter(id => !ignoredFileIds.has(id));
 
-    logger.debug('Files checked in folder', {
-      userEmail,
-      folderId,
-      totalFiles: files.length,
-      syncedFiles: syncedFilesCount,
-    });
+    // Only check upload status for non-ignored files
+    if (nonIgnoredFileIds.length > 0) {
+      const uploadRecords = await getUploadRecords(
+        userEmail,
+        nonIgnoredFileIds
+      );
+
+      const syncedFilesCount = Array.from(uploadRecords.values()).filter(
+        r => r !== null
+      ).length;
+
+      totalSyncedCount += syncedFilesCount;
+      totalItemCount += nonIgnoredFileIds.length;
+
+      logger.debug('Files checked in folder (excluding ignored)', {
+        userEmail,
+        folderId,
+        totalFiles: files.length,
+        ignoredFiles: ignoredFileIds.size,
+        nonIgnoredFiles: nonIgnoredFileIds.length,
+        syncedFiles: syncedFilesCount,
+      });
+    } else {
+      logger.debug('All files in folder are ignored', {
+        userEmail,
+        folderId,
+        totalFiles: files.length,
+        ignoredFiles: ignoredFileIds.size,
+      });
+    }
   }
 
   // 2. Recursively check all subfolders (if recursive is enabled)

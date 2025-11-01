@@ -14,6 +14,7 @@ import {
   clearSyncStatusCacheForFolder,
 } from '@/lib/sync-status';
 import { getQueuedFileIds } from '@/lib/upload-queue-db';
+import { getIgnoredFileIds } from '@/lib/ignored-files-db';
 import { createLogger } from '@/lib/logger';
 import { withErrorHandler } from '@/lib/error-handler';
 import { clearFolderFromCache } from '@/lib/db';
@@ -137,6 +138,9 @@ async function handleGET(request: NextRequest) {
   // Get queued file IDs
   const queuedFileIds = await getQueuedFileIds(userEmail, fileIds);
 
+  // Get ignored file IDs
+  const ignoredFileIds = getIgnoredFileIds(userEmail, fileIds);
+
   // For folders: try to get cached sync status, calculate if not cached
   const folderSyncStatuses = new Map();
   for (const folder of cachedData.folders) {
@@ -185,6 +189,7 @@ async function handleGET(request: NextRequest) {
     files: cachedData.files.map(file => ({
       ...file,
       syncStatus: fileSyncStatuses.get(file.id) || 'unsynced',
+      isIgnored: ignoredFileIds.has(file.id),
     })),
     folders: cachedData.folders.map(folder => ({
       ...folder,
@@ -195,6 +200,7 @@ async function handleGET(request: NextRequest) {
     lastSynced: cachedData.lastSynced,
     folderPath,
     queuedFileIds: Array.from(queuedFileIds),
+    ignoredFileIds: Array.from(ignoredFileIds),
   });
 }
 

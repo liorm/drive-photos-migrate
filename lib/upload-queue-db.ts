@@ -1,6 +1,7 @@
 import { getDatabase } from './sqlite-db';
 import { QueueItem, QueueItemStatus } from '@/types/upload-queue';
 import { isFileUploaded } from './uploads-db';
+import { isFileIgnored } from './ignored-files-db';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('upload-queue-db');
@@ -47,6 +48,21 @@ export async function addToQueue(
       skipped.push({
         driveFileId: file.driveFileId,
         reason: 'Already in queue',
+      });
+      continue;
+    }
+
+    // Check if file is ignored
+    const ignored = isFileIgnored(userEmail, file.driveFileId);
+
+    if (ignored) {
+      logger.debug('File is ignored, skipping', {
+        userEmail,
+        driveFileId: file.driveFileId,
+      });
+      skipped.push({
+        driveFileId: file.driveFileId,
+        reason: 'File is ignored',
       });
       continue;
     }

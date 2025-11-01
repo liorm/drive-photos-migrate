@@ -12,6 +12,7 @@ export interface DriveFile {
   modifiedTime: string;
   parents?: string[];
   syncStatus?: SyncStatus;
+  isIgnored?: boolean;
 }
 
 export interface DriveFolder {

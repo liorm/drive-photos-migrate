@@ -17,6 +17,10 @@ const MIGRATIONS: Array<{ name: string; migrate: (db: Database) => void }> = [
     name: 'add-recursive-sync-tracking',
     migrate: addRecursiveSyncTracking,
   },
+  {
+    name: 'add-ignored-files-table',
+    migrate: addIgnoredFilesTable,
+  },
 ];
 
 function addFileSizeToUploads(db: Database): void {
@@ -207,4 +211,40 @@ export function runMigrations(db: Database): void {
   }
 
   logger.info('Database migrations are up to date.');
+}
+
+function addIgnoredFilesTable(db: Database): void {
+  logger.info('Running migration: add-ignored-files-table');
+
+  // Check if table already exists (idempotent)
+  const tableExists = db
+    .prepare(
+      `SELECT name FROM sqlite_master
+       WHERE type='table' AND name='ignored_files'`
+    )
+    .get();
+
+  if (!tableExists) {
+    logger.info('Creating ignored_files table');
+
+    db.exec(`
+      CREATE TABLE ignored_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_email TEXT NOT NULL,
+        drive_file_id TEXT NOT NULL,
+        ignored_at TEXT NOT NULL,
+        reason TEXT,
+        UNIQUE(user_email, drive_file_id)
+      );
+    `);
+
+    db.exec(`
+      CREATE INDEX idx_ignored_files_user_file
+      ON ignored_files(user_email, drive_file_id);
+    `);
+
+    logger.info('ignored_files table created successfully');
+  } else {
+    logger.info('ignored_files table already exists, skipping');
+  }
 }
