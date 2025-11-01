@@ -921,24 +921,27 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
         />
       )}
 
-      {/* Empty state when not loading */}
-      {!loading && items.length === 0 && !error && (
-        <FileGrid
-          items={[]}
-          selectedFiles={selectedFiles}
-          queuedFiles={queuedFiles}
-          folderAlbumMappings={folderAlbumMappings}
-          folderQueueStatus={folderQueueStatus}
-          onToggleSelect={handleToggleSelect}
-          onNavigate={handleNavigate}
-          onAlbumCreated={() => {
-            // Add small delay to allow database write to complete
-            setTimeout(() => {
-              fetchFolderAlbumMappings(folders);
-            }, 500);
-          }}
-        />
-      )}
+      {/* Empty state when not loading - don't show when synced files are hidden (we show a different message) */}
+      {!loading &&
+        items.length === 0 &&
+        !error &&
+        !(hideSynced && files.length > 0) && (
+          <FileGrid
+            items={[]}
+            selectedFiles={selectedFiles}
+            queuedFiles={queuedFiles}
+            folderAlbumMappings={folderAlbumMappings}
+            folderQueueStatus={folderQueueStatus}
+            onToggleSelect={handleToggleSelect}
+            onNavigate={handleNavigate}
+            onAlbumCreated={() => {
+              // Add small delay to allow database write to complete
+              setTimeout(() => {
+                fetchFolderAlbumMappings(folders);
+              }, 500);
+            }}
+          />
+        )}
 
       {/* All files hidden state */}
       {!loading &&
