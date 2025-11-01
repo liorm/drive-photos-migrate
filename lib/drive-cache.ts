@@ -164,3 +164,152 @@ export async function getCachedFolderCount(
 ): Promise<number> {
   return getFolderCount(userEmail, folderId);
 }
+
+/**
+ * Recursively sync a folder and all its subfolders to cache
+ */
+export async function syncFolderToCacheRecursively(
+  userEmail: string,
+  folderId: string,
+  auth: GoogleAuthContext,
+  options?: {
+    maxDepth?: number;
+    currentDepth?: number;
+    maxConcurrency?: number;
+    operationId?: string;
+  }
+): Promise<void> {
+  const maxDepth = options?.maxDepth ?? Number.MAX_SAFE_INTEGER;
+  const currentDepth = options?.currentDepth ?? 0;
+  const maxConcurrency = options?.maxConcurrency ?? 3;
+
+  // Create operation if at root level
+  const isRootCall = !options?.operationId;
+
+  const syncOperation = async (opId: string) => {
+    logger.info('Starting recursive folder sync', {
+      userEmail,
+      folderId,
+      currentDepth,
+      maxDepth,
+    });
+
+    // Check depth limit
+    if (currentDepth >= maxDepth) {
+      logger.info('Max depth reached, skipping folder', {
+        userEmail,
+        folderId,
+        currentDepth,
+        maxDepth,
+      });
+      return;
+    }
+
+    // Update operation description with folder path
+    if (isRootCall) {
+      getFolderPath({ auth, folderId, operationId: opId, userEmail })
+        .then(breadcrumbs => {
+          const breadcrumbString = breadcrumbs.map(b => b.name).join(' / ');
+          operationStatusManager.updateOperation(opId, {
+            description: `Recursively syncing: ${breadcrumbString}`,
+          });
+        })
+        .catch(err => {
+          logger.warn('Failed to get breadcrumbs for operation description', {
+            operationId: opId,
+            error: err,
+          });
+        });
+    }
+
+    // Fetch all files and folders from Drive API
+    const { files: allFiles, folders: allFolders } = await listAllDriveFiles({
+      auth,
+      folderId,
+      operationId: opId,
+    });
+
+    logger.info('Drive files fetched, writing to cache', {
+      userEmail,
+      folderId,
+      fileCount: allFiles.length,
+      folderCount: allFolders.length,
+      currentDepth,
+    });
+
+    // Store in cache with recursive metadata
+    cacheFolderContents(userEmail, folderId, allFiles, allFolders, {
+      recursiveSync: true,
+      maxDepth,
+    });
+
+    // If we haven't reached max depth and there are subfolders, sync them
+    if (currentDepth < maxDepth - 1 && allFolders.length > 0) {
+      logger.info('Syncing subfolders recursively', {
+        userEmail,
+        folderId,
+        subfolderCount: allFolders.length,
+        currentDepth: currentDepth + 1,
+      });
+
+      // Process subfolders in batches to control concurrency
+      const batchSize = maxConcurrency;
+      for (let i = 0; i < allFolders.length; i += batchSize) {
+        const batch = allFolders.slice(i, i + batchSize);
+        await Promise.all(
+          batch.map(async subfolder => {
+            try {
+              await syncFolderToCacheRecursively(
+                userEmail,
+                subfolder.id,
+                auth,
+                {
+                  maxDepth,
+                  currentDepth: currentDepth + 1,
+                  maxConcurrency,
+                  operationId: opId,
+                }
+              );
+            } catch (error) {
+              logger.error('Failed to sync subfolder', error, {
+                userEmail,
+                folderId: subfolder.id,
+                folderName: subfolder.name,
+                parentFolderId: folderId,
+              });
+              // Continue with other subfolders even if one fails
+            }
+          })
+        );
+      }
+    }
+
+    logger.info('Recursive folder sync completed', {
+      userEmail,
+      folderId,
+      currentDepth,
+      totalItems: allFiles.length + allFolders.length,
+    });
+  };
+
+  // If this is the root call, wrap in operation tracking
+  if (isRootCall) {
+    return trackOperation(
+      OperationType.LONG_READ,
+      'Recursively syncing folder from Drive',
+      syncOperation,
+      {
+        description: `Recursively syncing folder ${folderId}`,
+        metadata: { userEmail, folderId, maxDepth },
+      }
+    );
+  } else {
+    // Recursive call - operationId must be provided
+    if (!options?.operationId) {
+      throw new Error(
+        'operationId is required for recursive calls to syncFolderToCacheRecursively'
+      );
+    }
+    await syncOperation(options.operationId);
+  }
+}

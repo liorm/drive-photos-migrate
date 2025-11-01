@@ -142,7 +142,11 @@ export function cacheFolderContents(
   userEmail: string,
   folderId: string,
   files: DriveFile[],
-  folders: DriveFolder[]
+  folders: DriveFolder[],
+  options?: {
+    recursiveSync?: boolean;
+    maxDepth?: number;
+  }
 ): void {
   const db = getDatabase();
 
@@ -176,14 +180,16 @@ export function cacheFolderContents(
     // Insert folder metadata
     const result = db
       .prepare(
-        `INSERT INTO cached_folders (user_email, folder_id, last_synced, total_count)
-         VALUES (?, ?, ?, ?)`
+        `INSERT INTO cached_folders (user_email, folder_id, last_synced, total_count, recursive_sync, max_depth)
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
       .run(
         userEmail,
         folderId,
         new Date().toISOString(),
-        files.length + folders.length
+        files.length + folders.length,
+        options?.recursiveSync ? 1 : 0,
+        options?.maxDepth ?? null
       );
 
     const cachedFolderId = result.lastInsertRowid;
