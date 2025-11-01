@@ -78,6 +78,8 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
   const [folderQueueStatus, setFolderQueueStatus] = useState<
     Map<string, string>
   >(new Map());
+  const [refreshingSyncStatus, setRefreshingSyncStatus] = useState(false);
+  const syncRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load hide synced preference from localStorage on mount
   useEffect(() => {
@@ -240,6 +242,16 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
     fetchFolderAlbumMappings(folders);
   }, [folders, fetchFolderAlbumMappings]);
 
+  // Cleanup polling interval on unmount or folder change
+  useEffect(() => {
+    return () => {
+      if (syncRefreshIntervalRef.current) {
+        clearInterval(syncRefreshIntervalRef.current);
+        syncRefreshIntervalRef.current = null;
+      }
+    };
+  }, [currentFolderId]);
+
   // Infinite scroll with Intersection Observer
   useEffect(() => {
     if (!hasMore || loading || loadingMore) return;
@@ -280,6 +292,89 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
   // Refresh folder
   const handleRefresh = () => {
     fetchFiles(currentFolderId, 0, true);
+  };
+
+  // Recursively refresh sync status for current folder and subfolders
+  const handleRecursiveSyncRefresh = async () => {
+    setRefreshingSyncStatus(true);
+    setUploadProgress('Refreshing sync status...');
+
+    // Clear any existing polling interval
+    if (syncRefreshIntervalRef.current) {
+      clearInterval(syncRefreshIntervalRef.current);
+      syncRefreshIntervalRef.current = null;
+    }
+
+    try {
+      // Start polling to update UI in real-time
+      syncRefreshIntervalRef.current = setInterval(() => {
+        fetchFiles(currentFolderId, 0);
+      }, 2500); // Poll every 2.5 seconds
+
+      // Call the recursive refresh API
+      const url = new URL('/api/photos/sync-status', window.location.origin);
+      url.searchParams.set('folderId', currentFolderId);
+      url.searchParams.set('recursiveRefresh', 'true');
+
+      const response = await fetch(url.toString());
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.error || 'Failed to refresh sync status';
+
+        // Check if this is an authentication error
+        if (response.status === 401 && isAuthError(errorMessage)) {
+          await handleAuthError();
+          return;
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+
+      // Clear polling interval
+      if (syncRefreshIntervalRef.current) {
+        clearInterval(syncRefreshIntervalRef.current);
+        syncRefreshIntervalRef.current = null;
+      }
+
+      // Final refresh to ensure all data is up to date
+      await fetchFiles(currentFolderId, 0);
+
+      // Format duration (convert ms to seconds)
+      const durationMs = result.recursiveResult?.durationMs || 0;
+      const durationSeconds = (durationMs / 1000).toFixed(1);
+      const processedCount = result.recursiveResult?.processedCount || 0;
+
+      // Show success message
+      setUploadProgress(
+        `Sync status refreshed for ${processedCount} folder${processedCount !== 1 ? 's' : ''} (${durationSeconds}s)`
+      );
+
+      // Clear message after 5 seconds
+      setTimeout(() => {
+        setUploadProgress(null);
+      }, 5000);
+    } catch (err) {
+      // Clear polling interval on error
+      if (syncRefreshIntervalRef.current) {
+        clearInterval(syncRefreshIntervalRef.current);
+        syncRefreshIntervalRef.current = null;
+      }
+
+      setUploadProgress(
+        `Error refreshing sync status: ${err instanceof Error ? err.message : 'Unknown error occurred'}`
+      );
+      console.error('Error refreshing sync status:', err);
+
+      // Clear error after 5 seconds
+      setTimeout(() => {
+        setUploadProgress(null);
+      }, 5000);
+    } finally {
+      setRefreshingSyncStatus(false);
+    }
   };
 
   // Toggle file selection
@@ -471,6 +566,17 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
               />
               Refresh
             </button>
+            <button
+              onClick={handleRecursiveSyncRefresh}
+              disabled={refreshingSyncStatus || loading}
+              className="flex items-center gap-1 rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 transition-colors hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Recursively refresh sync status for this folder and all subfolders"
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${refreshingSyncStatus ? 'animate-spin' : ''}`}
+              />
+              Refresh Sync Status
+            </button>
             <div className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-1.5">
               <label className="flex cursor-pointer items-center gap-1.5">
                 <input
@@ -494,7 +600,12 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
                       max="10"
                       value={maxDepth}
                       onChange={e =>
-                        setMaxDepth(Math.min(10, Math.max(1, parseInt(e.target.value, 10) || 1)))
+                        setMaxDepth(
+                          Math.min(
+                            10,
+                            Math.max(1, parseInt(e.target.value, 10) || 1)
+                          )
+                        )
                       }
                       className="w-14 rounded border border-gray-300 px-2 py-0.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
                     />
