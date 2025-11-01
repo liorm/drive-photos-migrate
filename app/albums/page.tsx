@@ -35,6 +35,7 @@ export default function AlbumsPage() {
   const [clearingAll, setClearingAll] = useState(false);
   const [showClearAllDialog, setShowClearAllDialog] = useState(false);
   const [requeuing, setRequeuing] = useState(false);
+  const [requeuingCompleted, setRequeuingCompleted] = useState(false);
 
   // Fetch queue from API
   const fetchQueue = useCallback(async (silent = false) => {
@@ -267,6 +268,39 @@ export default function AlbumsPage() {
     }
   };
 
+  // Re-queue completed items for updating
+  const handleRequeueCompleted = async () => {
+    if (stats.completed === 0) return;
+
+    try {
+      setRequeuingCompleted(true);
+      setError(null);
+
+      const response = await fetch('/api/albums/requeue-completed', {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.error || 'Failed to re-queue items';
+
+        if (response.status === 401 && isAuthError(errorMessage)) {
+          await handleAuthError();
+          return;
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      await fetchQueue(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      console.error('Error re-queuing completed items:', err);
+    } finally {
+      setRequeuingCompleted(false);
+    }
+  };
+
   // Remove individual item
   const handleRemove = async (id: string) => {
     try {
@@ -443,6 +477,24 @@ export default function AlbumsPage() {
               <>
                 <RotateCw className="h-4 w-4" />
                 Re-queue Failed ({stats.failed})
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={handleRequeueCompleted}
+            disabled={stats.completed === 0 || requeuingCompleted}
+            className="flex items-center gap-2 rounded-md border border-green-300 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 transition-colors hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {requeuingCompleted ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Updating...
+              </>
+            ) : (
+              <>
+                <RotateCw className="h-4 w-4" />
+                Update Completed ({stats.completed})
               </>
             )}
           </button>

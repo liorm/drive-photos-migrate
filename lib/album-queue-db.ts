@@ -475,6 +475,41 @@ export async function requeueFailedAlbumItems(
 }
 
 /**
+ * Re-queue completed album items for updating
+ * Sets status back to PENDING and clears timestamps
+ * This allows updating albums with any new files added to the Drive folder
+ * Returns the number of items re-queued.
+ */
+export async function requeueCompletedAlbumItems(
+  userEmail: string
+): Promise<number> {
+  logger.info('Re-queuing completed album items', { userEmail });
+
+  const db = getDatabase();
+
+  const result = db
+    .prepare(
+      `UPDATE album_queue
+       SET status = 'PENDING', mode = NULL, started_at = NULL, completed_at = NULL
+       WHERE user_email = ? AND status = 'COMPLETED'`
+    )
+    .run(userEmail);
+
+  const requeuedCount = result.changes || 0;
+
+  if (requeuedCount > 0) {
+    logger.info('Re-queued completed album items', {
+      userEmail,
+      requeuedCount,
+    });
+  } else {
+    logger.debug('No completed album items to re-queue', { userEmail });
+  }
+
+  return requeuedCount;
+}
+
+/**
  * Get album queue statistics
  */
 export async function getAlbumQueueStats(
