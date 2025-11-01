@@ -42,6 +42,7 @@ interface ApiResponse {
   lastSynced?: string;
   folderPath: BreadcrumbItem[];
   queuedFileIds: string[];
+  ignoredFileIds: string[];
 }
 
 import { OperationType } from '@/lib/operation-status';
@@ -78,6 +79,8 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
   const [folderQueueStatus, setFolderQueueStatus] = useState<
     Map<string, string>
   >(new Map());
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [ignoredFiles, setIgnoredFiles] = useState<Set<string>>(new Set());
   const [refreshingSyncStatus, setRefreshingSyncStatus] = useState(false);
   const syncRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -147,12 +150,16 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
           setFiles(data.files);
           setFolders(data.folders);
           setQueuedFiles(new Set(data.queuedFileIds || []));
+          setIgnoredFiles(new Set(data.ignoredFileIds || []));
         } else {
           setFiles(prev => [...prev, ...data.files]);
           // Folders only come on first page
           // Merge queued files for pagination
           setQueuedFiles(
             prev => new Set([...prev, ...(data.queuedFileIds || [])])
+          );
+          setIgnoredFiles(
+            prev => new Set([...prev, ...(data.ignoredFileIds || [])])
           );
         }
 
@@ -379,6 +386,13 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
 
   // Toggle file selection
   const handleToggleSelect = (file: DriveFile) => {
+    // Prevent selection of ignored files
+    if (file.isIgnored) {
+      setUploadProgress('Cannot select ignored files');
+      setTimeout(() => setUploadProgress(null), 2000);
+      return;
+    }
+
     setSelectedFiles(prev => {
       const next = new Set(prev);
       if (next.has(file.id)) {
@@ -388,6 +402,44 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
       }
       return next;
     });
+  };
+
+  // Toggle file ignore status
+  const handleToggleIgnore = async (file: DriveFile) => {
+    const isCurrentlyIgnored = file.isIgnored || false;
+
+    try {
+      const response = await fetch('/api/files/ignore', {
+        method: isCurrentlyIgnored ? 'DELETE' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId: file.id }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        setUploadProgress(errorData.error || 'Failed to toggle ignore status');
+        setTimeout(() => setUploadProgress(null), 3000);
+        return;
+      }
+
+      // Update local state
+      setIgnoredFiles(prev => {
+        const next = new Set(prev);
+        if (isCurrentlyIgnored) {
+          next.delete(file.id);
+        } else {
+          next.add(file.id);
+        }
+        return next;
+      });
+
+      // Refresh file list to update ignored status
+      await fetchFiles(currentFolderId, 0, true);
+    } catch (err) {
+      console.error('Error toggling ignore:', err);
+      setUploadProgress('Failed to toggle ignore status');
+      setTimeout(() => setUploadProgress(null), 3000);
+    }
   };
 
   // Select all visible files
@@ -501,13 +553,13 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
     }
   };
 
-  // Filter out synced items if hideSynced is enabled
+  // Filter out synced and ignored items if hideSynced is enabled
   const filteredFolders = hideSynced
     ? folders.filter(folder => folder.syncStatus?.status !== 'synced')
     : folders;
 
   const filteredFiles = hideSynced
-    ? files.filter(file => file.syncStatus !== 'synced')
+    ? files.filter(file => file.syncStatus !== 'synced' && !file.isIgnored)
     : files;
 
   // Combine folders and files for display
@@ -754,6 +806,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
           folderAlbumMappings={folderAlbumMappings}
           folderQueueStatus={folderQueueStatus}
           onToggleSelect={handleToggleSelect}
+          onToggleIgnore={handleToggleIgnore}
           onNavigate={handleNavigate}
           onAlbumCreated={() => {
             // Add small delay to allow database write to complete
@@ -773,6 +826,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
           folderAlbumMappings={folderAlbumMappings}
           folderQueueStatus={folderQueueStatus}
           onToggleSelect={handleToggleSelect}
+          onToggleIgnore={handleToggleIgnore}
           onNavigate={handleNavigate}
           onAlbumCreated={() => {
             // Add small delay to allow database write to complete

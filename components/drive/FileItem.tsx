@@ -1,7 +1,15 @@
 'use client';
 
 import { DriveFile } from '@/types/google-drive';
-import { FileImage, FileVideo, File, CheckCircle2, Clock } from 'lucide-react';
+import {
+  FileImage,
+  FileVideo,
+  File,
+  CheckCircle2,
+  Clock,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import { LazyImage } from '@/components/ui/LazyImage';
 
 interface FileItemProps {
@@ -9,6 +17,7 @@ interface FileItemProps {
   isSelected: boolean;
   isQueued: boolean;
   onToggleSelect: (file: DriveFile) => void;
+  onToggleIgnore?: (file: DriveFile) => void;
 }
 
 export function FileItem({
@@ -16,10 +25,12 @@ export function FileItem({
   isSelected,
   isQueued,
   onToggleSelect,
+  onToggleIgnore,
 }: FileItemProps) {
   const isImage = file.mimeType.startsWith('image/');
   const isVideo = file.mimeType.startsWith('video/');
   const isSynced = file.syncStatus === 'synced';
+  const isIgnored = file.isIgnored || false;
 
   // Format file size
   const formatSize = (bytes?: string) => {
@@ -38,9 +49,29 @@ export function FileItem({
         isSelected
           ? 'border-blue-500 bg-blue-50'
           : 'border-gray-200 hover:border-gray-300'
-      }`}
-      onClick={() => onToggleSelect(file)}
+      } ${isIgnored ? 'opacity-60' : ''}`}
+      onClick={() => !isIgnored && onToggleSelect(file)}
     >
+      {/* Ignore button */}
+      {onToggleIgnore && (
+        <div className="absolute top-2 left-2 z-10">
+          <button
+            onClick={e => {
+              e.stopPropagation();
+              onToggleIgnore(file);
+            }}
+            className="rounded-full bg-white/90 p-1.5 shadow-md transition-colors hover:bg-white"
+            title={isIgnored ? 'Unignore file' : 'Ignore file'}
+          >
+            {isIgnored ? (
+              <Eye className="h-4 w-4 text-gray-600" />
+            ) : (
+              <EyeOff className="h-4 w-4 text-gray-600" />
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Selection checkbox */}
       <div className="absolute top-2 right-2 z-10">
         <input
@@ -49,6 +80,7 @@ export function FileItem({
           onChange={() => onToggleSelect(file)}
           className="h-5 w-5 cursor-pointer rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
           onClick={e => e.stopPropagation()}
+          disabled={isIgnored}
         />
       </div>
 
@@ -74,10 +106,18 @@ export function FileItem({
         )}
 
         {/* Synced badge on thumbnail */}
-        {isSynced && (
+        {isSynced && !isIgnored && (
           <div className="absolute bottom-1 left-1 flex items-center gap-1 rounded-full bg-green-600 px-2 py-0.5 text-xs font-semibold text-white shadow-md">
             <CheckCircle2 className="h-3 w-3" />
             Synced
+          </div>
+        )}
+
+        {/* Ignored badge on thumbnail */}
+        {isIgnored && (
+          <div className="absolute bottom-1 left-1 flex items-center gap-1 rounded-full bg-gray-600 px-2 py-0.5 text-xs font-semibold text-white shadow-md">
+            <EyeOff className="h-3 w-3" />
+            Ignored
           </div>
         )}
 
