@@ -182,24 +182,34 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
       }
 
       try {
-        const folderIds = folderList.map(f => f.id).join(',');
-        // URL-encode each folder name to handle special characters (commas, etc.)
-        const folderNames = folderList
-          .map(f => encodeURIComponent(f.name))
-          .join(',');
+        const folderIds = folderList.map(f => f.id);
+        const folderNames = folderList.map(f => f.name);
 
         const url = new URL('/api/drive/folder-albums', window.location.origin);
-        url.searchParams.set('folderIds', folderIds);
-        url.searchParams.set('folderNames', folderNames);
 
-        const response = await fetch(url.toString());
+        const response = await fetch(url.toString(), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            folderIds,
+            folderNames,
+          }),
+        });
 
         if (!response.ok) {
-          const errorText = await response.text();
+          let errorMessage = 'Unknown error';
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch {
+            errorMessage = await response.text();
+          }
           console.error('Failed to fetch folder-album mappings', {
             status: response.status,
             statusText: response.statusText,
-            error: errorText,
+            error: errorMessage,
           });
           return;
         }
