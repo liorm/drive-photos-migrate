@@ -486,7 +486,7 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
                       max="10"
                       value={maxDepth}
                       onChange={e =>
-                        setMaxDepth(Math.max(1, parseInt(e.target.value, 10) || 1))
+                        setMaxDepth(Math.min(10, Math.max(1, parseInt(e.target.value, 10) || 1)))
                       }
                       className="w-14 rounded border border-gray-300 px-2 py-0.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
                     />
