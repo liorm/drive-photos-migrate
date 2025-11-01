@@ -48,8 +48,12 @@ async function handleGET(request: NextRequest) {
   }
 
   const folderIds = folderIdsParam.split(',').filter(id => id.trim());
+  // Decode each folder name (they are URL-encoded to handle special characters)
   const folderNames = folderNamesParam
-    ? folderNamesParam.split(',').filter(name => name.trim())
+    ? folderNamesParam
+        .split(',')
+        .map(name => decodeURIComponent(name.trim()))
+        .filter(name => name)
     : [];
 
   if (folderIds.length === 0) {
