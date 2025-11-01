@@ -6,6 +6,13 @@ import { createLogger } from '@/lib/logger';
 const logger = createLogger('db');
 
 /**
+ * Page size used to retrieve all items without pagination.
+ * This is used when we need to process entire folder contents at once
+ * (e.g., calculating sync status for all files in a folder tree).
+ */
+export const UNPAGINATED_PAGE_SIZE = 999999;
+
+/**
  * Check if a folder is cached for a user
  */
 export function isFolderCached(userEmail: string, folderId: string): boolean {

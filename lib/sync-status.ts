@@ -13,6 +13,7 @@ import {
   clearAllSyncStatusCache as clearAllCache,
   getCachedFolder,
   getFolderDetailsFromCache,
+  UNPAGINATED_PAGE_SIZE,
 } from './db';
 import { isFileUploaded, getUploadRecords } from './uploads-db';
 import { createLogger } from '@/lib/logger';
@@ -89,8 +90,13 @@ export async function calculateFolderSyncStatus(
   });
   const startTime = Date.now();
 
-  // Get cached folder data (page 0 to get all subfolders, but we need all files)
-  const cachedData = getCachedFolder(userEmail, folderId, 0, 999999); // Large page size to get all
+  // Get cached folder data (retrieve all items without pagination)
+  const cachedData = getCachedFolder(
+    userEmail,
+    folderId,
+    0,
+    UNPAGINATED_PAGE_SIZE
+  );
 
   if (!cachedData) {
     logger.warn('Folder not found in cache, returning unsynced', {
@@ -238,8 +244,13 @@ async function recursiveRefreshHelper(
   userEmail: string,
   folderId: string
 ): Promise<RecursiveSyncRefreshResult> {
-  // Get folder data
-  const cachedData = getCachedFolder(userEmail, folderId, 0, 999999);
+  // Get folder data (retrieve all items without pagination)
+  const cachedData = getCachedFolder(
+    userEmail,
+    folderId,
+    0,
+    UNPAGINATED_PAGE_SIZE
+  );
 
   if (!cachedData) {
     logger.warn('Folder not found in cache during recursive refresh', {
