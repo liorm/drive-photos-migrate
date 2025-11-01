@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { auth } from '@/auth';
+import { validateSession } from '@/lib/auth-utils';
 import operationStatusManager, { Operation } from '@/lib/operation-status';
 import { createLogger } from '@/lib/logger';
 
@@ -9,6 +11,18 @@ const logger = createLogger('api:operations:stream');
  * GET /api/operations/stream
  */
 export async function GET(request: NextRequest) {
+  // Validate session before setting up stream
+  const session = await auth();
+  const sessionResult = validateSession(session, 'stream');
+
+  if (!sessionResult.success) {
+    return sessionResult.response;
+  }
+
+  const { userEmail } = sessionResult.data;
+
+  logger.info('SSE stream requested', { userEmail });
+
   // Set up SSE headers
   const responseHeaders = new Headers({
     'Content-Type': 'text/event-stream',
@@ -28,27 +42,36 @@ export async function GET(request: NextRequest) {
         controller.enqueue(encoder.encode(message));
       };
 
-      // Send initial connection message with all current operations
-      const initialOperations = operationStatusManager.getAllOperations();
+      // Send initial connection message with ONLY user's operations
+      const initialOperations =
+        operationStatusManager.getOperationsByUser(userEmail);
       sendEvent('connected', {
         timestamp: new Date().toISOString(),
         operations: initialOperations,
       });
 
       logger.info('SSE client connected', {
+        userEmail,
         activeOperations: initialOperations.length,
       });
 
-      // Set up event listeners for operation updates
+      // Set up event listeners for operation updates - FILTER BY USER
       const onOperationCreated = (operation: Operation) => {
-        sendEvent('operation:created', operation);
+        if (operation.metadata?.userEmail === userEmail) {
+          sendEvent('operation:created', operation);
+        }
       };
 
       const onOperationUpdated = (operation: Operation) => {
-        sendEvent('operation:updated', operation);
+        if (operation.metadata?.userEmail === userEmail) {
+          sendEvent('operation:updated', operation);
+        }
       };
 
       const onOperationRemoved = (data: { id: string }) => {
+        // For removal, we need to check if it was the user's operation
+        // Since we can't check metadata after removal, we send all removals
+        // The client will ignore removals for operations it doesn't have
         sendEvent('operation:removed', data);
       };
 

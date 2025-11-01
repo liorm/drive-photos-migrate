@@ -294,6 +294,15 @@ class OperationStatusManager extends EventEmitter {
   }
 
   /**
+   * Gets operations filtered by user email
+   */
+  getOperationsByUser(userEmail: string): Operation[] {
+    return Array.from(this.operations.values()).filter(
+      op => op.metadata?.userEmail === userEmail
+    );
+  }
+
+  /**
    * Gets operations filtered by type
    */
   getOperationsByType(type: OperationType): Operation[] {

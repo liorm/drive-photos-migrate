@@ -323,6 +323,7 @@ class UploadsManager {
         {
           description: `Uploading ${pendingItems.length} file(s) to Google Photos`,
           total: pendingItems.length,
+          metadata: { userEmail },
         }
       );
 

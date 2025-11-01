@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { auth } from '@/auth';
+import { validateSession } from '@/lib/auth-utils';
 import operationStatusManager, { OperationType } from '@/lib/operation-status';
 
 /**
@@ -6,12 +8,22 @@ import operationStatusManager, { OperationType } from '@/lib/operation-status';
  * GET /api/operations/test
  */
 export async function GET() {
+  const session = await auth();
+  const sessionResult = validateSession(session, 'test-op');
+
+  if (!sessionResult.success) {
+    return sessionResult.response;
+  }
+
+  const { userEmail } = sessionResult.data;
+
   const operationId = operationStatusManager.createOperation(
     OperationType.LONG_READ,
     'Test Operation',
     {
       description: 'This is a test operation to verify notifications work',
       total: 100,
+      metadata: { userEmail },
     }
   );
 
