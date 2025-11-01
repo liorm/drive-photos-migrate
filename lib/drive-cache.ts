@@ -185,7 +185,6 @@ export async function syncFolderToCacheRecursively(
 
   // Create operation if at root level
   const isRootCall = !options?.operationId;
-  const operationId = options?.operationId ?? '';
 
   const syncOperation = async (opId: string) => {
     logger.info('Starting recursive folder sync', {
@@ -305,7 +304,12 @@ export async function syncFolderToCacheRecursively(
       }
     );
   } else {
-    // Otherwise, just execute the sync operation
-    await syncOperation(operationId);
+    // Recursive call - operationId must be provided
+    if (!options?.operationId) {
+      throw new Error(
+        'operationId is required for recursive calls to syncFolderToCacheRecursively'
+      );
+    }
+    await syncOperation(options.operationId);
   }
 }
