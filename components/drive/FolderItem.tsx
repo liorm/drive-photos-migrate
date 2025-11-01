@@ -12,7 +12,7 @@ import {
   AlertTriangle,
   Clock,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FolderAlbumMapping } from './FileBrowser';
 import { useToast } from '@/components/ui/Toast';
 
@@ -33,13 +33,19 @@ export function FolderItem({
 }: FolderItemProps) {
   const syncStatus = folder.syncStatus;
   const [working, setWorking] = useState(false);
+  const [optimisticQueueStatus, setOptimisticQueueStatus] = useState<
+    string | null
+  >(null);
   const { showToast } = useToast();
 
   // Handle create/update album
   const handleAlbumAction = async (e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent folder navigation
 
+    // Optimistic UI update - immediately show queue status
+    setOptimisticQueueStatus('PENDING');
     setWorking(true);
+
     try {
       const response = await fetch('/api/albums/queue', {
         method: 'POST',
@@ -58,6 +64,8 @@ export function FolderItem({
           errorData.error || 'Failed to add folder to album queue',
           'error'
         );
+        // Reset optimistic state on error
+        setOptimisticQueueStatus(null);
         return;
       }
 
@@ -69,6 +77,8 @@ export function FolderItem({
     } catch (error) {
       console.error('Error adding folder to album queue:', error);
       showToast('Failed to add folder to album queue', 'error');
+      // Reset optimistic state on error
+      setOptimisticQueueStatus(null);
     } finally {
       setWorking(false);
     }
@@ -125,17 +135,28 @@ export function FolderItem({
     return null;
   };
 
+  // Clear optimistic queue status when real queue status arrives
+  useEffect(() => {
+    if (queueStatus && optimisticQueueStatus) {
+      setOptimisticQueueStatus(null);
+    }
+  }, [queueStatus, optimisticQueueStatus]);
+
   // Check if folder is already in queue (active status)
+  // Use optimistic state if available, otherwise use prop
+  const effectiveQueueStatus = optimisticQueueStatus || queueStatus;
   const isInQueue =
-    queueStatus &&
-    ['PENDING', 'UPLOADING', 'CREATING', 'UPDATING'].includes(queueStatus);
+    effectiveQueueStatus &&
+    ['PENDING', 'UPLOADING', 'CREATING', 'UPDATING'].includes(
+      effectiveQueueStatus
+    );
 
   // Determine button text and style
   const getButtonConfig = () => {
     // If in queue, show "In Queue" status
     if (isInQueue) {
       return {
-        text: `In Queue (${queueStatus})`,
+        text: `In Queue (${effectiveQueueStatus})`,
         icon: <Clock className="h-3 w-3" />,
         className:
           'text-gray-700 bg-gray-100 border-gray-300 cursor-not-allowed',
@@ -195,6 +216,21 @@ export function FolderItem({
           >
             <span className="flex items-center gap-2">
               {folder.name}
+              {/* Status icon next to folder name */}
+              {isInQueue && (
+                <span title={`In queue (${effectiveQueueStatus})`}>
+                  <Clock className="h-4 w-4 flex-shrink-0 text-orange-500" />
+                </span>
+              )}
+              {!isInQueue && albumMapping && !albumMapping.albumDeleted && (
+                <span title="Has album in Google Photos">
+                  {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                  <Image
+                    className="h-4 w-4 flex-shrink-0 text-green-600"
+                    aria-hidden="true"
+                  />
+                </span>
+              )}
               <a
                 href={`https://drive.google.com/drive/folders/${folder.id}`}
                 target="_blank"
@@ -218,6 +254,32 @@ export function FolderItem({
             </span>
           )}
         </p>
+
+        {/* Queue Status Badge */}
+        {isInQueue && (
+          <div className="flex items-center gap-1 text-xs">
+            <Clock
+              className={`h-3 w-3 ${
+                effectiveQueueStatus === 'PENDING'
+                  ? 'text-orange-600'
+                  : effectiveQueueStatus === 'UPLOADING'
+                    ? 'text-blue-600'
+                    : 'text-purple-600'
+              }`}
+            />
+            <span
+              className={`font-medium ${
+                effectiveQueueStatus === 'PENDING'
+                  ? 'text-orange-600'
+                  : effectiveQueueStatus === 'UPLOADING'
+                    ? 'text-blue-600'
+                    : 'text-purple-600'
+              }`}
+            >
+              In Queue ({effectiveQueueStatus})
+            </span>
+          </div>
+        )}
 
         {/* Album Badge */}
         {albumMapping && !albumMapping.albumDeleted && (
@@ -258,7 +320,7 @@ export function FolderItem({
           className={`relative z-10 mt-2 flex w-full items-center justify-center gap-1 rounded border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${buttonConfig.className}`}
           title={
             isInQueue
-              ? `Already in queue (${queueStatus})`
+              ? `Already in queue (${effectiveQueueStatus})`
               : albumMapping
                 ? albumMapping.albumDeleted
                   ? 'Recreate album in Google Photos'

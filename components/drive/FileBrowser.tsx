@@ -755,7 +755,12 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
           folderQueueStatus={folderQueueStatus}
           onToggleSelect={handleToggleSelect}
           onNavigate={handleNavigate}
-          onAlbumCreated={() => fetchFolderAlbumMappings(folders)}
+          onAlbumCreated={() => {
+            // Add small delay to allow database write to complete
+            setTimeout(() => {
+              fetchFolderAlbumMappings(folders);
+            }, 500);
+          }}
         />
       )}
 
@@ -769,7 +774,12 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
           folderQueueStatus={folderQueueStatus}
           onToggleSelect={handleToggleSelect}
           onNavigate={handleNavigate}
-          onAlbumCreated={() => fetchFolderAlbumMappings(folders)}
+          onAlbumCreated={() => {
+            // Add small delay to allow database write to complete
+            setTimeout(() => {
+              fetchFolderAlbumMappings(folders);
+            }, 500);
+          }}
         />
       )}
 
