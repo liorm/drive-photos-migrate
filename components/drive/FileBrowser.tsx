@@ -79,8 +79,6 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
   const [folderQueueStatus, setFolderQueueStatus] = useState<
     Map<string, string>
   >(new Map());
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [ignoredFiles, setIgnoredFiles] = useState<Set<string>>(new Set());
   const [refreshingSyncStatus, setRefreshingSyncStatus] = useState(false);
   const syncRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -150,16 +148,12 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
           setFiles(data.files);
           setFolders(data.folders);
           setQueuedFiles(new Set(data.queuedFileIds || []));
-          setIgnoredFiles(new Set(data.ignoredFileIds || []));
         } else {
           setFiles(prev => [...prev, ...data.files]);
           // Folders only come on first page
           // Merge queued files for pagination
           setQueuedFiles(
             prev => new Set([...prev, ...(data.queuedFileIds || [])])
-          );
-          setIgnoredFiles(
-            prev => new Set([...prev, ...(data.ignoredFileIds || [])])
           );
         }
 
@@ -437,8 +431,8 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
       // Clear selection
       setSelectedFiles(new Set());
 
-      // Refresh file list
-      await fetchFiles(currentFolderId, 0, true);
+      // Refresh file list from cache (no Drive API refresh needed)
+      await fetchFiles(currentFolderId, 0);
 
       if (errorCount === 0) {
         setUploadProgress(`Successfully ignored ${successCount} file(s)`);
@@ -495,8 +489,8 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
       // Clear selection
       setSelectedFiles(new Set());
 
-      // Refresh file list
-      await fetchFiles(currentFolderId, 0, true);
+      // Refresh file list from cache (no Drive API refresh needed)
+      await fetchFiles(currentFolderId, 0);
 
       if (errorCount === 0) {
         setUploadProgress(`Successfully unignored ${successCount} file(s)`);
