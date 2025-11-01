@@ -159,7 +159,7 @@ class AlbumsManager {
   }
 
   /**
-   * Recursively enumerate all files in a folder
+   * Recursively enumerate all files in a folder and its subfolders
    */
   private async enumerateFilesInFolder(
     auth: GoogleAuthContext,
@@ -169,8 +169,10 @@ class AlbumsManager {
     logger.info('Enumerating files in folder', { folderId });
 
     const fileIds: string[] = [];
+    const subfolderIds: string[] = [];
     let pageToken: string | undefined;
 
+    // First pass: collect files and subfolder IDs
     do {
       const result = await listDriveFiles({
         auth,
@@ -179,9 +181,12 @@ class AlbumsManager {
         operationId,
       });
 
-      // Add files (not folders) to the list
       for (const item of result.files) {
-        if (item.mimeType !== 'application/vnd.google-apps.folder') {
+        if (item.mimeType === 'application/vnd.google-apps.folder') {
+          // Collect subfolder for recursive processing
+          subfolderIds.push(item.id);
+        } else {
+          // Add file to result
           fileIds.push(item.id);
         }
       }
@@ -189,7 +194,35 @@ class AlbumsManager {
       pageToken = result.nextPageToken;
     } while (pageToken);
 
-    logger.info('Files enumerated successfully', {
+    logger.info('Files enumerated in current folder', {
+      folderId,
+      fileCount: fileIds.length,
+      subfolderCount: subfolderIds.length,
+    });
+
+    // Recursively process subfolders
+    for (const subfolderId of subfolderIds) {
+      logger.info('Recursing into subfolder', {
+        subfolderId,
+        parentFolderId: folderId,
+      });
+
+      const subfolderFiles = await this.enumerateFilesInFolder(
+        auth,
+        subfolderId,
+        operationId
+      );
+
+      fileIds.push(...subfolderFiles);
+
+      logger.info('Subfolder processed', {
+        subfolderId,
+        filesFound: subfolderFiles.length,
+        totalFilesNow: fileIds.length,
+      });
+    }
+
+    logger.info('Files enumerated successfully (including subfolders)', {
       folderId,
       fileCount: fileIds.length,
     });
