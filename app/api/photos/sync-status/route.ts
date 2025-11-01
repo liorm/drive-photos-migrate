@@ -3,6 +3,7 @@ import { auth } from '@/auth';
 import {
   getCachedFolderSyncStatus,
   calculateFolderSyncStatus,
+  recursivelyRefreshFolderSyncStatus,
 } from '@/lib/sync-status';
 import { getUploadRecords } from '@/lib/uploads-db';
 import { createLogger } from '@/lib/logger';
@@ -29,6 +30,8 @@ async function handleGET(request: NextRequest) {
   const folderId = searchParams.get('folderId');
   const fileIds = searchParams.get('fileIds'); // Comma-separated file IDs
   const forceRecalculate = searchParams.get('forceRecalculate') === 'true';
+  const recursive = searchParams.get('recursive') !== 'false'; // Default true
+  const recursiveRefresh = searchParams.get('recursiveRefresh') === 'true'; // Force recursive refresh with details
 
   logger.info('Sync status request', {
     requestId,
@@ -36,6 +39,8 @@ async function handleGET(request: NextRequest) {
     folderId,
     fileIds: fileIds ? fileIds.split(',').length : 0,
     forceRecalculate,
+    recursive,
+    recursiveRefresh,
   });
 
   // Handle folder sync status request
@@ -44,12 +49,47 @@ async function handleGET(request: NextRequest) {
       requestId,
       userEmail,
       folderId,
+      recursive,
+      recursiveRefresh,
     });
 
+    // If recursiveRefresh is requested, return detailed subfolder information
+    if (recursiveRefresh) {
+      logger.info('Starting recursive sync status refresh', {
+        requestId,
+        userEmail,
+        folderId,
+      });
+
+      const result = await recursivelyRefreshFolderSyncStatus(
+        userEmail,
+        folderId
+      );
+
+      logger.info('Recursive sync status refresh completed', {
+        requestId,
+        userEmail,
+        folderId,
+        processedCount: result.processedCount,
+        durationMs: result.durationMs,
+      });
+
+      return NextResponse.json({
+        folderId,
+        syncStatus: result.status,
+        recursiveResult: result,
+      });
+    }
+
+    // Otherwise, handle normal sync status request
     let folderStatus;
 
     if (forceRecalculate) {
-      folderStatus = await calculateFolderSyncStatus(userEmail, folderId);
+      folderStatus = await calculateFolderSyncStatus(
+        userEmail,
+        folderId,
+        recursive
+      );
     } else {
       // Try to get cached status first
       const cached = await getCachedFolderSyncStatus(userEmail, folderId);
@@ -67,7 +107,11 @@ async function handleGET(request: NextRequest) {
           userEmail,
           folderId,
         });
-        folderStatus = await calculateFolderSyncStatus(userEmail, folderId);
+        folderStatus = await calculateFolderSyncStatus(
+          userEmail,
+          folderId,
+          recursive
+        );
       }
     }
 

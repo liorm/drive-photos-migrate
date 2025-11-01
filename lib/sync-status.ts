@@ -1,4 +1,8 @@
-import { SyncStatus, SyncStatusDetail } from '@/types/sync-status';
+import {
+  SyncStatus,
+  SyncStatusDetail,
+  RecursiveSyncRefreshResult,
+} from '@/types/sync-status';
 import {
   getCachedFileSyncStatus as getFileSyncStatusFromCache,
   getCachedFolderSyncStatus as getFolderSyncStatusFromCache,
@@ -8,12 +12,60 @@ import {
   clearFoldersSyncStatusCache as clearFoldersCache,
   clearAllSyncStatusCache as clearAllCache,
   getCachedFolder,
+  getFolderDetailsFromCache,
+  UNPAGINATED_PAGE_SIZE,
 } from './db';
 import { isFileUploaded, getUploadRecords } from './uploads-db';
 import { createLogger } from '@/lib/logger';
 import { GoogleAuthContext } from '@/types/auth';
 
 const logger = createLogger('sync-status');
+
+/**
+ * Default concurrency limit for parallel subfolder processing.
+ * Limits how many subfolders are processed simultaneously to avoid
+ * overwhelming the database with too many concurrent reads.
+ */
+const DEFAULT_SUBFOLDER_CONCURRENCY = 10;
+
+/**
+ * Process items in parallel batches with concurrency control
+ * Uses Promise.allSettled to handle failures gracefully - if one item fails,
+ * others continue processing.
+ *
+ * @param items - Array of items to process
+ * @param processFn - Async function to process each item
+ * @param concurrency - Maximum number of concurrent operations
+ * @returns Array of successfully processed results (failed items are logged and skipped)
+ */
+async function processBatched<T, R>(
+  items: T[],
+  processFn: (item: T) => Promise<R>,
+  concurrency: number
+): Promise<R[]> {
+  const results: R[] = [];
+
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    const batchResults = await Promise.allSettled(batch.map(processFn));
+
+    // Extract successful results and log failures
+    for (let j = 0; j < batchResults.length; j++) {
+      const result = batchResults[j];
+      if (result.status === 'fulfilled') {
+        results.push(result.value);
+      } else {
+        const itemIndex = i + j;
+        logger.warn('Failed to process item in batch', {
+          itemIndex,
+          error: result.reason?.message || String(result.reason),
+        });
+      }
+    }
+  }
+
+  return results;
+}
 
 /**
  * Get cached sync status for a file
@@ -67,18 +119,30 @@ export async function calculateFileSyncStatus(
 }
 
 /**
- * Calculate sync status for a folder (recursive)
- * Checks all files in the folder and all subfolders
+ * Calculate sync status for a folder
+ * @param userEmail - User's email
+ * @param folderId - Folder ID to calculate status for
+ * @param recursive - If true, recursively calculate status for all subfolders (default: true)
  */
 export async function calculateFolderSyncStatus(
   userEmail: string,
-  folderId: string
+  folderId: string,
+  recursive = true
 ): Promise<SyncStatusDetail> {
-  logger.info('Calculating folder sync status', { userEmail, folderId });
+  logger.info('Calculating folder sync status', {
+    userEmail,
+    folderId,
+    recursive,
+  });
   const startTime = Date.now();
 
-  // Get cached folder data (page 0 to get all subfolders, but we need all files)
-  const cachedData = getCachedFolder(userEmail, folderId, 0, 999999); // Large page size to get all
+  // Get cached folder data (retrieve all items without pagination)
+  const cachedData = getCachedFolder(
+    userEmail,
+    folderId,
+    0,
+    UNPAGINATED_PAGE_SIZE
+  );
 
   if (!cachedData) {
     logger.warn('Folder not found in cache, returning unsynced', {
@@ -122,23 +186,42 @@ export async function calculateFolderSyncStatus(
     });
   }
 
-  // 2. Recursively check all subfolders
-  for (const subfolder of subfolders) {
-    const subfolderStatus = await calculateFolderSyncStatus(
-      userEmail,
-      subfolder.id
-    );
-
-    totalSyncedCount += subfolderStatus.syncedCount;
-    totalItemCount += subfolderStatus.totalCount;
-
-    logger.debug('Subfolder checked', {
+  // 2. Recursively check all subfolders (if recursive is enabled)
+  if (recursive && subfolders.length > 0) {
+    logger.debug('Processing subfolders in parallel', {
       userEmail,
       folderId,
-      subfolderId: subfolder.id,
-      subfolderSynced: subfolderStatus.syncedCount,
-      subfolderTotal: subfolderStatus.totalCount,
+      subfolderCount: subfolders.length,
+      concurrency: DEFAULT_SUBFOLDER_CONCURRENCY,
     });
+
+    const subfolderStatuses = await processBatched(
+      subfolders,
+      async subfolder => {
+        const status = await calculateFolderSyncStatus(
+          userEmail,
+          subfolder.id,
+          recursive
+        );
+
+        logger.debug('Subfolder checked', {
+          userEmail,
+          folderId,
+          subfolderId: subfolder.id,
+          subfolderSynced: status.syncedCount,
+          subfolderTotal: status.totalCount,
+        });
+
+        return status;
+      },
+      DEFAULT_SUBFOLDER_CONCURRENCY
+    );
+
+    // Aggregate results from all subfolders
+    for (const subfolderStatus of subfolderStatuses) {
+      totalSyncedCount += subfolderStatus.syncedCount;
+      totalItemCount += subfolderStatus.totalCount;
+    }
   }
 
   // 3. Calculate overall status
@@ -183,6 +266,130 @@ export async function calculateFolderSyncStatus(
   });
 
   return statusDetail;
+}
+
+/**
+ * Recursively refresh sync status for a folder and all its subfolders
+ * This function forces recalculation and returns detailed information about all processed folders
+ *
+ * @param userEmail - User's email
+ * @param folderId - Root folder ID to start from
+ * @returns Detailed information about all processed folders
+ */
+export async function recursivelyRefreshFolderSyncStatus(
+  userEmail: string,
+  folderId: string
+): Promise<RecursiveSyncRefreshResult> {
+  logger.info('Starting recursive sync status refresh', {
+    userEmail,
+    folderId,
+  });
+
+  const startTime = Date.now();
+  const result = await recursiveRefreshHelper(userEmail, folderId);
+  const duration = Date.now() - startTime;
+
+  logger.info('Recursive sync status refresh completed', {
+    userEmail,
+    folderId,
+    processedCount: result.processedCount,
+    durationMs: duration,
+  });
+
+  return result;
+}
+
+/**
+ * Helper function for recursive sync status refresh
+ */
+async function recursiveRefreshHelper(
+  userEmail: string,
+  folderId: string
+): Promise<RecursiveSyncRefreshResult> {
+  // Get folder data (retrieve all items without pagination)
+  const cachedData = getCachedFolder(
+    userEmail,
+    folderId,
+    0,
+    UNPAGINATED_PAGE_SIZE
+  );
+
+  if (!cachedData) {
+    logger.warn('Folder not found in cache during recursive refresh', {
+      userEmail,
+      folderId,
+    });
+
+    const emptyStatus: SyncStatusDetail = {
+      status: 'unsynced',
+      syncedCount: 0,
+      totalCount: 0,
+      percentage: 0,
+      lastChecked: new Date().toISOString(),
+    };
+
+    return {
+      folderId,
+      status: emptyStatus,
+      subfolders: [],
+      processedCount: 1,
+      durationMs: 0,
+    };
+  }
+
+  const startTime = Date.now();
+  const subfolders = cachedData.folders;
+
+  // Process all subfolders recursively in parallel batches
+  let subfolderResults: RecursiveSyncRefreshResult[] = [];
+  let totalProcessedCount = 1; // Count this folder
+
+  if (subfolders.length > 0) {
+    logger.debug('Processing subfolders in parallel for recursive refresh', {
+      userEmail,
+      folderId,
+      subfolderCount: subfolders.length,
+      concurrency: DEFAULT_SUBFOLDER_CONCURRENCY,
+    });
+
+    subfolderResults = await processBatched(
+      subfolders,
+      async subfolder => recursiveRefreshHelper(userEmail, subfolder.id),
+      DEFAULT_SUBFOLDER_CONCURRENCY
+    );
+
+    // Calculate total processed count
+    totalProcessedCount += subfolderResults.reduce(
+      (sum, result) => sum + result.processedCount,
+      0
+    );
+  }
+
+  // Calculate sync status for this folder (recursive to include subfolders)
+  const status = await calculateFolderSyncStatus(userEmail, folderId, true);
+
+  // Get folder name from cache (may be undefined for root-level folders or
+  // folders not enumerated as subfolders in the cache)
+  const folderDetails = getFolderDetailsFromCache(userEmail, folderId);
+
+  const duration = Date.now() - startTime;
+
+  logger.debug('Folder sync status refreshed', {
+    userEmail,
+    folderId,
+    status: status.status,
+    subfolderCount: subfolders.length,
+    processedCount: totalProcessedCount,
+  });
+
+  return {
+    folderId,
+    folderName: folderDetails?.name,
+    status,
+    subfolders: subfolderResults,
+    processedCount: totalProcessedCount,
+    durationMs: duration,
+  };
 }
 
 /**

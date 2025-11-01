@@ -6,6 +6,13 @@ import { createLogger } from '@/lib/logger';
 const logger = createLogger('db');
 
 /**
+ * Page size used to retrieve all items without pagination.
+ * This is used when we need to process entire folder contents at once
+ * (e.g., calculating sync status for all files in a folder tree).
+ */
+export const UNPAGINATED_PAGE_SIZE = 999999;
+
+/**
  * Check if a folder is cached for a user
  */
 export function isFolderCached(userEmail: string, folderId: string): boolean {
@@ -450,6 +457,13 @@ export function getFileDetailsFromCache(
 
 /**
  * Get folder metadata from Drive cache by folder ID
+ *
+ * Note: This only finds folders that are cached as subfolders in the
+ * cached_subfolders table. Root-level folders or folders not enumerated
+ * as subfolders will return null. For guaranteed folder name lookup,
+ * use getFolderPath() which falls back to Google Drive API.
+ *
+ * @returns Folder details if found in cache, null otherwise
  */
 export function getFolderDetailsFromCache(
   userEmail: string,
