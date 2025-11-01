@@ -451,6 +451,13 @@ export function getFileDetailsFromCache(
 
 /**
  * Get folder metadata from Drive cache by folder ID
+ *
+ * Note: This only finds folders that are cached as subfolders in the
+ * cached_subfolders table. Root-level folders or folders not enumerated
+ * as subfolders will return null. For guaranteed folder name lookup,
+ * use getFolderPath() which falls back to Google Drive API.
+ *
+ * @returns Folder details if found in cache, null otherwise
  */
 export function getFolderDetailsFromCache(
   userEmail: string,

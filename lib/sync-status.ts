@@ -294,7 +294,8 @@ async function recursiveRefreshHelper(
   // Calculate sync status for this folder (recursive to include subfolders)
   const status = await calculateFolderSyncStatus(userEmail, folderId, true);
 
-  // Get folder name from cache
+  // Get folder name from cache (may be undefined for root-level folders or
+  // folders not enumerated as subfolders in the cache)
   const folderDetails = getFolderDetailsFromCache(userEmail, folderId);
 
   const duration = Date.now() - startTime;

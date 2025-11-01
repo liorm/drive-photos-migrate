@@ -47,6 +47,9 @@ export interface SyncStatusCacheData {
  */
 export interface RecursiveSyncRefreshResult {
   folderId: string;
+  /** Folder name from cache. May be undefined for root-level folders or folders
+   * not enumerated as subfolders in the cache. Does not fetch from API to avoid
+   * slowing down bulk operations. */
   folderName?: string;
   status: SyncStatusDetail;
   subfolders: RecursiveSyncRefreshResult[];
