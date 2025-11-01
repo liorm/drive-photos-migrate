@@ -1051,3 +1051,40 @@ export async function getBatchActiveQueueStatus(
 
   return statusMap;
 }
+
+/**
+ * Mark all in-progress album items as failed
+ * This is used when processing is stopped or cancelled
+ */
+export async function failInProgressAlbumItems(
+  userEmail: string,
+  errorMessage: string
+): Promise<number> {
+  logger.info('Marking in-progress album items as failed', { userEmail });
+
+  const db = getDatabase();
+
+  const result = db
+    .prepare(
+      `UPDATE album_queue
+       SET status = 'FAILED',
+           error = ?,
+           completed_at = ?
+       WHERE user_email = ?
+       AND status IN ('UPLOADING', 'CREATING', 'UPDATING')`
+    )
+    .run(errorMessage, new Date().toISOString(), userEmail);
+
+  const failedCount = result.changes || 0;
+
+  if (failedCount > 0) {
+    logger.info('Marked in-progress album items as failed', {
+      userEmail,
+      failedCount,
+    });
+  } else {
+    logger.debug('No in-progress album items to fail', { userEmail });
+  }
+
+  return failedCount;
+}

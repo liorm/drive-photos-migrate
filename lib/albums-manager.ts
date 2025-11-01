@@ -9,6 +9,7 @@ import {
   upsertFolderAlbumMapping,
   getFolderAlbumMapping,
   removeDuplicateAlbumItems,
+  failInProgressAlbumItems,
 } from './album-queue-db';
 import { listDriveFiles } from './google-drive';
 import { GoogleAuthContext } from '@/types/auth';
@@ -164,9 +165,18 @@ class AlbumsManager {
   private async enumerateFilesInFolder(
     auth: GoogleAuthContext,
     folderId: string,
-    operationId?: string
+    operationId?: string,
+    signal?: AbortSignal
   ): Promise<string[]> {
     logger.info('Enumerating files in folder', { folderId });
+
+    // Check if processing has been aborted before starting
+    if (signal?.aborted) {
+      logger.info('Album processing aborted during file enumeration', {
+        folderId,
+      });
+      throw new Error('Processing stopped by user');
+    }
 
     const fileIds: string[] = [];
     const subfolderIds: string[] = [];
@@ -174,6 +184,14 @@ class AlbumsManager {
 
     // First pass: collect files and subfolder IDs
     do {
+      // Check for abort before each API call
+      if (signal?.aborted) {
+        logger.info('Album processing aborted during file enumeration', {
+          folderId,
+        });
+        throw new Error('Processing stopped by user');
+      }
+
       const result = await listDriveFiles({
         auth,
         folderId,
@@ -202,6 +220,15 @@ class AlbumsManager {
 
     // Recursively process subfolders
     for (const subfolderId of subfolderIds) {
+      // Check for abort before processing each subfolder
+      if (signal?.aborted) {
+        logger.info('Album processing aborted during subfolder enumeration', {
+          folderId,
+          subfolderId,
+        });
+        throw new Error('Processing stopped by user');
+      }
+
       logger.info('Recursing into subfolder', {
         subfolderId,
         parentFolderId: folderId,
@@ -210,7 +237,8 @@ class AlbumsManager {
       const subfolderFiles = await this.enumerateFilesInFolder(
         auth,
         subfolderId,
-        operationId
+        operationId,
+        signal
       );
 
       fileIds.push(...subfolderFiles);
@@ -300,7 +328,8 @@ class AlbumsManager {
             userEmail,
             auth,
             albumQueueItem,
-            operationId
+            operationId,
+            controller.signal
           );
 
           successCount++;
@@ -377,7 +406,8 @@ class AlbumsManager {
     userEmail: string,
     auth: GoogleAuthContext,
     albumQueueItem: AlbumQueueItem,
-    operationId: string
+    operationId: string,
+    signal?: AbortSignal
   ): Promise<void> {
     logger.info('Processing album queue item', {
       userEmail,
@@ -452,7 +482,8 @@ class AlbumsManager {
     const fileIds = await this.enumerateFilesInFolder(
       auth,
       albumQueueItem.driveFolderId,
-      operationId
+      operationId,
+      signal
     );
 
     await updateAlbumQueueItem(userEmail, albumQueueItem.id, {
@@ -579,6 +610,15 @@ class AlbumsManager {
       const pollInterval = 1000; // 1 second
 
       while (pollCount < maxPolls) {
+        // Check if processing has been aborted
+        if (signal?.aborted) {
+          logger.info('Album processing aborted during upload polling', {
+            userEmail,
+            albumQueueId: albumQueueItem.id,
+          });
+          throw new Error('Processing stopped by user');
+        }
+
         const pendingItems = await getAlbumItemsByStatus(
           albumQueueItem.id,
           'PENDING'
@@ -804,14 +844,23 @@ class AlbumsManager {
       }
     }
 
+    // Mark any in-progress album items as failed so UI reflects the stop
+    failInProgressAlbumItems(userEmail, 'Processing stopped by user').catch(
+      err => {
+        logger.warn('Failed to mark in-progress album items as failed', {
+          userEmail,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    );
+
     // Fail any active album operations for this user
     try {
       const allOps = operationStatusManager.getAllOperations();
       allOps.forEach(op => {
         if (
           op.metadata?.userEmail === userEmail &&
-          op.status === 'in_progress' &&
-          op.type === OperationType.LONG_WRITE
+          op.status === 'in_progress'
         ) {
           operationStatusManager.failOperation(op.id, 'Stopped by user');
         }
