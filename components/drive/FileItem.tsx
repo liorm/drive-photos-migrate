@@ -7,7 +7,6 @@ import {
   File,
   CheckCircle2,
   Clock,
-  Eye,
   EyeOff,
 } from 'lucide-react';
 import { LazyImage } from '@/components/ui/LazyImage';
@@ -17,7 +16,6 @@ interface FileItemProps {
   isSelected: boolean;
   isQueued: boolean;
   onToggleSelect: (file: DriveFile) => void;
-  onToggleIgnore?: (file: DriveFile) => void;
 }
 
 export function FileItem({
@@ -25,7 +23,6 @@ export function FileItem({
   isSelected,
   isQueued,
   onToggleSelect,
-  onToggleIgnore,
 }: FileItemProps) {
   const isImage = file.mimeType.startsWith('image/');
   const isVideo = file.mimeType.startsWith('video/');
@@ -52,26 +49,6 @@ export function FileItem({
       } ${isIgnored ? 'opacity-60' : ''}`}
       onClick={() => !isIgnored && onToggleSelect(file)}
     >
-      {/* Ignore button */}
-      {onToggleIgnore && (
-        <div className="absolute top-2 left-2 z-10">
-          <button
-            onClick={e => {
-              e.stopPropagation();
-              onToggleIgnore(file);
-            }}
-            className="rounded-full bg-white/90 p-1.5 shadow-md transition-colors hover:bg-white"
-            title={isIgnored ? 'Unignore file' : 'Ignore file'}
-          >
-            {isIgnored ? (
-              <Eye className="h-4 w-4 text-gray-600" />
-            ) : (
-              <EyeOff className="h-4 w-4 text-gray-600" />
-            )}
-          </button>
-        </div>
-      )}
-
       {/* Selection checkbox */}
       <div className="absolute top-2 right-2 z-10">
         <input

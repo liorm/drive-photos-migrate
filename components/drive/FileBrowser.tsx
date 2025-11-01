@@ -404,40 +404,53 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
     });
   };
 
-  // Toggle file ignore status
-  const handleToggleIgnore = async (file: DriveFile) => {
-    const isCurrentlyIgnored = file.isIgnored || false;
+  // Ignore selected files
+  const handleIgnoreSelected = async () => {
+    if (selectedFiles.size === 0) return;
+
+    const fileCount = selectedFiles.size;
+    setUploadProgress(`Ignoring ${fileCount} file(s)...`);
 
     try {
-      const response = await fetch('/api/files/ignore', {
-        method: isCurrentlyIgnored ? 'DELETE' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileId: file.id }),
-      });
+      // Ignore files one by one
+      let successCount = 0;
+      let errorCount = 0;
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        setUploadProgress(errorData.error || 'Failed to toggle ignore status');
-        setTimeout(() => setUploadProgress(null), 3000);
-        return;
+      for (const fileId of selectedFiles) {
+        try {
+          const response = await fetch('/api/files/ignore', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileId }),
+          });
+
+          if (response.ok) {
+            successCount++;
+          } else {
+            errorCount++;
+          }
+        } catch {
+          errorCount++;
+        }
       }
 
-      // Update local state
-      setIgnoredFiles(prev => {
-        const next = new Set(prev);
-        if (isCurrentlyIgnored) {
-          next.delete(file.id);
-        } else {
-          next.add(file.id);
-        }
-        return next;
-      });
+      // Clear selection
+      setSelectedFiles(new Set());
 
-      // Refresh file list to update ignored status
+      // Refresh file list
       await fetchFiles(currentFolderId, 0, true);
+
+      if (errorCount === 0) {
+        setUploadProgress(`Successfully ignored ${successCount} file(s)`);
+      } else {
+        setUploadProgress(
+          `Ignored ${successCount} file(s), ${errorCount} failed`
+        );
+      }
     } catch (err) {
-      console.error('Error toggling ignore:', err);
-      setUploadProgress('Failed to toggle ignore status');
+      console.error('Error ignoring files:', err);
+      setUploadProgress('Failed to ignore files');
+    } finally {
       setTimeout(() => setUploadProgress(null), 3000);
     }
   };
@@ -735,23 +748,33 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
         </div>
 
         {selectedFiles.size > 0 && (
-          <button
-            onClick={handleAddToQueue}
-            disabled={uploading}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {uploading ? (
-              <span className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Adding...
-              </span>
-            ) : (
-              <>
-                Add {selectedFiles.size} file
-                {selectedFiles.size !== 1 ? 's' : ''} to Queue
-              </>
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleAddToQueue}
+              disabled={uploading}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {uploading ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Adding...
+                </span>
+              ) : (
+                <>
+                  Add {selectedFiles.size} file
+                  {selectedFiles.size !== 1 ? 's' : ''} to Queue
+                </>
+              )}
+            </button>
+            <button
+              onClick={handleIgnoreSelected}
+              disabled={uploading}
+              className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <EyeOff className="h-4 w-4" />
+              Ignore {selectedFiles.size}
+            </button>
+          </div>
         )}
       </div>
 
@@ -806,7 +829,6 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
           folderAlbumMappings={folderAlbumMappings}
           folderQueueStatus={folderQueueStatus}
           onToggleSelect={handleToggleSelect}
-          onToggleIgnore={handleToggleIgnore}
           onNavigate={handleNavigate}
           onAlbumCreated={() => {
             // Add small delay to allow database write to complete
@@ -826,7 +848,6 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
           folderAlbumMappings={folderAlbumMappings}
           folderQueueStatus={folderQueueStatus}
           onToggleSelect={handleToggleSelect}
-          onToggleIgnore={handleToggleIgnore}
           onNavigate={handleNavigate}
           onAlbumCreated={() => {
             // Add small delay to allow database write to complete
