@@ -16,6 +16,12 @@ export interface SyncStatusDetail {
   totalCount: number;
   percentage: number; // 0-100
   lastChecked: string;
+  /**
+   * Whether the folder has been enumerated (checked) from Google Drive.
+   * True if folder exists in cached_folders table.
+   * False/undefined if folder was never fetched from Drive API.
+   */
+  hasBeenEnumerated?: boolean;
 }
 
 /**

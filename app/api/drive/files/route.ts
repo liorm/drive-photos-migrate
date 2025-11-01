@@ -140,9 +140,16 @@ async function handleGET(request: NextRequest) {
   // For folders: try to get cached sync status, calculate if not cached
   const folderSyncStatuses = new Map();
   for (const folder of cachedData.folders) {
+    // Check if folder has been enumerated from Drive
+    const hasBeenEnumerated = isFolderCached(userEmail, folder.id);
+
     const cached = await getCachedFolderSyncStatus(userEmail, folder.id);
     if (cached) {
-      folderSyncStatuses.set(folder.id, cached);
+      // Add enumeration flag to cached status
+      folderSyncStatuses.set(folder.id, {
+        ...cached,
+        hasBeenEnumerated,
+      });
     } else {
       // Calculate in the background to avoid blocking the response
       // Store as 'unknown' for now
@@ -152,6 +159,7 @@ async function handleGET(request: NextRequest) {
         totalCount: 0,
         percentage: 0,
         lastChecked: new Date().toISOString(),
+        hasBeenEnumerated,
       });
       // Trigger calculation in background (don't await)
       calculateFolderSyncStatus(userEmail, folder.id).catch(error => {

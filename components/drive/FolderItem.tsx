@@ -120,18 +120,20 @@ export function FolderItem({
       }
     }
 
-    // Empty folders (totalCount === 0) - show subtle indicator
-    if (syncStatus.totalCount === 0 && syncStatus.lastChecked) {
+    // Empty folders (totalCount === 0) - only show if folder was actually checked
+    // Don't show badge for folders that were never enumerated from Drive
+    if (syncStatus.totalCount === 0 && syncStatus.hasBeenEnumerated === true) {
       return (
         <div
           className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-full bg-gray-400 px-2 py-0.5 text-xs font-semibold text-white"
-          title="Empty folder"
+          title="Folder was checked and is empty"
         >
           Empty
         </div>
       );
     }
 
+    // No badge for unchecked folders (clean look)
     return null;
   };
 
