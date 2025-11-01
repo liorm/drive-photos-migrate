@@ -678,134 +678,152 @@ export function FileBrowser({ initialFolderId = 'root' }: FileBrowserProps) {
               </span>
             )}
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleRefresh}
-              disabled={loading}
-              className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Refresh from Google Drive"
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
-              />
-              Refresh
-            </button>
-            <button
-              onClick={handleRecursiveSyncRefresh}
-              disabled={refreshingSyncStatus || loading}
-              className="flex items-center gap-1 rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 transition-colors hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Recursively refresh sync status for this folder and all subfolders"
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${refreshingSyncStatus ? 'animate-spin' : ''}`}
-              />
-              Refresh Sync Status
-            </button>
-            <div className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-1.5">
-              <label className="flex cursor-pointer items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  checked={recursiveFetch}
-                  onChange={e => setRecursiveFetch(e.target.checked)}
-                  className="h-4 w-4 cursor-pointer rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+          <div className="flex items-center gap-2">
+            {/* Section 1: Data Refresh */}
+            <div className="flex gap-2">
+              <button
+                onClick={handleRefresh}
+                disabled={loading}
+                className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Refresh from Google Drive"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
                 />
-                <span className="text-sm font-medium text-gray-700">
-                  Recursive
-                </span>
-              </label>
-              {recursiveFetch && (
-                <>
-                  <span className="text-gray-400">|</span>
-                  <label className="flex items-center gap-1.5">
-                    <span className="text-sm text-gray-600">Depth:</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={maxDepth}
-                      onChange={e =>
-                        setMaxDepth(
-                          Math.min(
-                            10,
-                            Math.max(1, parseInt(e.target.value, 10) || 1)
-                          )
-                        )
-                      }
-                      className="w-14 rounded border border-gray-300 px-2 py-0.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                    />
-                  </label>
-                </>
-              )}
+                Refresh
+              </button>
+              <button
+                onClick={handleRecursiveSyncRefresh}
+                disabled={refreshingSyncStatus || loading}
+                className="flex items-center gap-1 rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 transition-colors hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Recursively refresh sync status for this folder and all subfolders"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${refreshingSyncStatus ? 'animate-spin' : ''}`}
+                />
+                Refresh Sync Status
+              </button>
             </div>
-            <button
-              onClick={handleSelectAll}
-              disabled={filteredFiles.length === 0}
-              className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <CheckSquare className="h-4 w-4" />
-              Select All
-            </button>
-            <button
-              onClick={handleDeselectAll}
-              disabled={selectedFiles.size === 0}
-              className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Square className="h-4 w-4" />
-              Deselect All
-            </button>
-            <button
-              onClick={handleEnqueueAll}
-              disabled={uploading || isFolderBeingEnqueued}
-              className="flex items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <ListPlus className="h-4 w-4" />
-              Enqueue All
-            </button>
-            <button
-              onClick={() => {
-                const newHideSynced = !hideSynced;
-                setHideSynced(newHideSynced);
 
-                // Save preference to localStorage
-                localStorage.setItem(
-                  'hideSyncedFiles',
-                  newHideSynced.toString()
-                );
+            {/* Divider */}
+            <div className="h-8 w-px bg-gray-300"></div>
 
-                // Clear selection of synced files when hiding them
-                if (newHideSynced) {
-                  setSelectedFiles(prev => {
-                    const newSelection = new Set(prev);
-                    files.forEach(file => {
-                      if (file.syncStatus === 'synced') {
-                        newSelection.delete(file.id);
-                      }
+            {/* Section 2: View Options */}
+            <div className="flex gap-2">
+              <div className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-1.5">
+                <label className="flex cursor-pointer items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={recursiveFetch}
+                    onChange={e => setRecursiveFetch(e.target.checked)}
+                    className="h-4 w-4 cursor-pointer rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    Recursive
+                  </span>
+                </label>
+                {recursiveFetch && (
+                  <>
+                    <span className="text-gray-400">|</span>
+                    <label className="flex items-center gap-1.5">
+                      <span className="text-sm text-gray-600">Depth:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={maxDepth}
+                        onChange={e =>
+                          setMaxDepth(
+                            Math.min(
+                              10,
+                              Math.max(1, parseInt(e.target.value, 10) || 1)
+                            )
+                          )
+                        }
+                        className="w-14 rounded border border-gray-300 px-2 py-0.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                      />
+                    </label>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  const newHideSynced = !hideSynced;
+                  setHideSynced(newHideSynced);
+
+                  // Save preference to localStorage
+                  localStorage.setItem(
+                    'hideSyncedFiles',
+                    newHideSynced.toString()
+                  );
+
+                  // Clear selection of synced files when hiding them
+                  if (newHideSynced) {
+                    setSelectedFiles(prev => {
+                      const newSelection = new Set(prev);
+                      files.forEach(file => {
+                        if (file.syncStatus === 'synced') {
+                          newSelection.delete(file.id);
+                        }
+                      });
+                      return newSelection;
                     });
-                    return newSelection;
-                  });
-                }
-              }}
-              className={`flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
-                hideSynced
-                  ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
-                  : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              {hideSynced ? (
-                <>
-                  <EyeOff className="h-4 w-4" />
-                  Show Synced
-                </>
-              ) : (
-                <>
-                  <Eye className="h-4 w-4" />
-                  Hide Synced
-                </>
-              )}
-            </button>
+                  }
+                }}
+                className={`flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                  hideSynced
+                    ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
+                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {hideSynced ? (
+                  <>
+                    <EyeOff className="h-4 w-4" />
+                    Show Synced
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-4 w-4" />
+                    Hide Synced
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div className="h-8 w-px bg-gray-300"></div>
+
+            {/* Section 3: Selection Actions */}
+            <div className="flex gap-2">
+              <button
+                onClick={handleSelectAll}
+                disabled={filteredFiles.length === 0}
+                className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <CheckSquare className="h-4 w-4" />
+                Select All
+              </button>
+              <button
+                onClick={handleDeselectAll}
+                disabled={selectedFiles.size === 0}
+                className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Square className="h-4 w-4" />
+                Deselect All
+              </button>
+              <button
+                onClick={handleEnqueueAll}
+                disabled={uploading || isFolderBeingEnqueued}
+                className="flex items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ListPlus className="h-4 w-4" />
+                Enqueue All
+              </button>
+            </div>
           </div>
         </div>
 
+        {/* Section 4: Selected Actions (conditional) */}
         {selectedFiles.size > 0 && (
           <div className="flex items-center gap-2">
             {/* Only show Add to Queue for non-ignored files */}
