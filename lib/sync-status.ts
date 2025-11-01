@@ -232,14 +232,20 @@ export async function calculateFolderSyncStatus(
     status = 'unsynced';
     percentage = 0;
   } else {
-    percentage = Math.round((totalSyncedCount / totalItemCount) * 100);
-
+    // Determine status first based on actual counts
     if (totalSyncedCount === totalItemCount) {
       status = 'synced';
+      percentage = 100;
     } else if (totalSyncedCount > 0) {
       status = 'partial';
+      // Cap at 99% to avoid showing "100%" on partial sync due to rounding
+      percentage = Math.min(
+        99,
+        Math.round((totalSyncedCount / totalItemCount) * 100)
+      );
     } else {
       status = 'unsynced';
+      percentage = 0;
     }
   }
 

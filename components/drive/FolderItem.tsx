@@ -76,29 +76,52 @@ export function FolderItem({
 
   // Determine sync status badge
   const getSyncBadge = () => {
-    if (!syncStatus || syncStatus.totalCount === 0) {
+    if (!syncStatus) {
       return null;
     }
 
-    if (syncStatus.status === 'synced') {
+    // Show badge for folders with items
+    if (syncStatus.totalCount > 0) {
+      if (syncStatus.status === 'synced') {
+        return (
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-full bg-green-600 px-2 py-0.5 text-xs font-semibold text-white">
+            <CheckCircle2 className="h-3 w-3" />
+            Synced
+          </div>
+        );
+      }
+
+      if (syncStatus.status === 'partial') {
+        return (
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-full bg-yellow-600 px-2 py-0.5 text-xs font-semibold text-white">
+            <AlertCircle className="h-3 w-3" />
+            {syncStatus.percentage}%
+          </div>
+        );
+      }
+
+      if (syncStatus.status === 'unsynced') {
+        return (
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-full bg-gray-500 px-2 py-0.5 text-xs font-semibold text-white">
+            <AlertCircle className="h-3 w-3" />
+            0%
+          </div>
+        );
+      }
+    }
+
+    // Empty folders (totalCount === 0) - show subtle indicator
+    if (syncStatus.totalCount === 0 && syncStatus.lastChecked) {
       return (
-        <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-full bg-green-600 px-2 py-0.5 text-xs font-semibold text-white">
-          <CheckCircle2 className="h-3 w-3" />
-          Synced
+        <div
+          className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-full bg-gray-400 px-2 py-0.5 text-xs font-semibold text-white"
+          title="Empty folder"
+        >
+          Empty
         </div>
       );
     }
 
-    if (syncStatus.status === 'partial') {
-      return (
-        <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-full bg-yellow-600 px-2 py-0.5 text-xs font-semibold text-white">
-          <AlertCircle className="h-3 w-3" />
-          {syncStatus.percentage}%
-        </div>
-      );
-    }
-
-    // unsynced - no badge
     return null;
   };
 
