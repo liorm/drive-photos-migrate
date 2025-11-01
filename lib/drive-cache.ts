@@ -240,7 +240,7 @@ export async function syncFolderToCacheRecursively(
     // Store in cache with recursive metadata
     cacheFolderContents(userEmail, folderId, allFiles, allFolders, {
       recursiveSync: true,
-      maxDepth: maxDepth === Number.MAX_SAFE_INTEGER ? undefined : maxDepth,
+      maxDepth,
     });
 
     // If we haven't reached max depth and there are subfolders, sync them
