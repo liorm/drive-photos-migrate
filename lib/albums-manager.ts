@@ -24,6 +24,7 @@ import {
   getUploadedMediaItemId,
   removeInvalidMediaItems,
 } from './uploads-db';
+import { getIgnoredFileIds } from './ignored-files-db';
 import { createLogger } from './logger';
 import operationStatusManager, { OperationType } from './operation-status';
 import { retryWithBackoff } from './retry';
@@ -525,13 +526,43 @@ class AlbumsManager {
       });
     }
 
-    // Step 7: Check which files are already uploaded
+    // Step 7: Check which files are already uploaded or ignored
 
     const albumItems = await getAlbumItems(albumQueueItem.id);
     const filesToUpload: string[] = [];
     let uploadedCount = 0;
+    let ignoredCount = 0;
+
+    // Batch check ignored files for efficiency
+    const ignoredFileIds = getIgnoredFileIds(
+      userEmail,
+      albumItems.map(i => i.driveFileId)
+    );
+
+    logger.debug('Checking album items for upload/ignore status', {
+      userEmail,
+      albumQueueId: albumQueueItem.id,
+      totalItems: albumItems.length,
+      ignoredFiles: ignoredFileIds.size,
+    });
 
     for (const item of albumItems) {
+      // Check if file is ignored FIRST
+      if (ignoredFileIds.has(item.driveFileId)) {
+        // Mark as FAILED so it doesn't block album creation
+        await updateAlbumItem(item.id, {
+          status: 'FAILED',
+          photosMediaItemId: null,
+        });
+        ignoredCount++;
+        logger.debug('File is ignored, marking as FAILED', {
+          userEmail,
+          albumQueueId: albumQueueItem.id,
+          driveFileId: item.driveFileId,
+        });
+        continue; // Skip this file
+      }
+
       const isUploaded = await isFileUploaded(userEmail, item.driveFileId);
 
       if (isUploaded) {
@@ -568,6 +599,7 @@ class AlbumsManager {
       albumQueueId: albumQueueItem.id,
       totalFiles: fileIds.length,
       alreadyUploaded: uploadedCount,
+      ignoredFiles: ignoredCount,
       needsUpload: filesToUpload.length,
     });
 
