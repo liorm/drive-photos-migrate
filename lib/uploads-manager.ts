@@ -26,6 +26,7 @@ import backoffController from './backoff-controller';
 import { QueueItem } from '@/types/upload-queue';
 import { UploadRateTracker } from './upload-rate-tracker';
 import { cleanAllTempFiles, deleteTempFile } from './temp-file-utils';
+import { ignoreFile } from './ignored-files-db';
 
 const logger = createLogger('uploads-manager');
 
@@ -563,6 +564,44 @@ class UploadsManager {
                 status: 'uploading',
                 startedAt: new Date().toISOString(),
               });
+
+              // Skip files with zero size - mark as completed without uploading
+              if (item.fileSize === 0) {
+                logger.info('Skipping zero-sized file', {
+                  userEmail,
+                  queueItemId: item.id,
+                  driveFileId: item.driveFileId,
+                  fileName: item.fileName,
+                });
+
+                // Mark file as ignored in the ignored_files table
+                ignoreFile(userEmail, item.driveFileId, 'Empty file (0 bytes)');
+
+                await updateQueueItem(userEmail, item.id, {
+                  status: 'completed',
+                  completedAt: new Date().toISOString(),
+                  error: 'Skipped: Empty file (0 bytes)',
+                });
+
+                successCount++;
+
+                // Update operation progress
+                const completedSoFar = successCount + failureCount;
+                operationStatusManager.updateProgress(
+                  operationId,
+                  Math.min(completedSoFar, pendingItems.length),
+                  pendingItems.length
+                );
+
+                logger.info('Zero-sized file skipped and marked as ignored', {
+                  userEmail,
+                  queueItemId: item.id,
+                  driveFileId: item.driveFileId,
+                  fileName: item.fileName,
+                });
+
+                continue;
+              }
 
               // Determine if we should use temp file streaming for large files
               const useStreaming =
