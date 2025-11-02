@@ -5,6 +5,9 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   // Use an env var so you can run dev and build in parallel without clobbering the same .next
   distDir: process.env.NEXT_DIST_DIR || '.next',
+  // Emit browser source maps in production builds so client exceptions map to original sources
+  // (useful when debugging production errors and for stack trace mapping)
+  productionBrowserSourceMaps: true,
   images: {
     remotePatterns: [
       {

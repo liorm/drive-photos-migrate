@@ -320,6 +320,84 @@ export async function deleteUploadRecords(
 }
 
 /**
+ * Remove invalid media item ID from uploads table
+ * Called when a media item is discovered to be invalid/deleted in Google Photos
+ */
+export async function removeInvalidMediaItem(
+  userEmail: string,
+  driveFileId: string,
+  invalidMediaItemId: string
+): Promise<void> {
+  logger.warn('Removing invalid media item from uploads table', {
+    userEmail,
+    driveFileId,
+    invalidMediaItemId,
+  });
+
+  const db = getDatabase();
+
+  // Delete the upload record so the file can be re-uploaded
+  const result = db
+    .prepare(
+      'DELETE FROM uploads WHERE user_email = ? AND drive_file_id = ? AND photos_media_item_id = ?'
+    )
+    .run(userEmail, driveFileId, invalidMediaItemId);
+
+  if (result.changes > 0) {
+    logger.info(
+      'Invalid media item removed successfully, file can be re-uploaded',
+      {
+        userEmail,
+        driveFileId,
+        invalidMediaItemId,
+      }
+    );
+  } else {
+    logger.debug('No matching upload record found to remove', {
+      userEmail,
+      driveFileId,
+      invalidMediaItemId,
+    });
+  }
+}
+
+/**
+ * Batch remove multiple invalid media item IDs
+ */
+export async function removeInvalidMediaItems(
+  userEmail: string,
+  invalidItems: Array<{ driveFileId: string; mediaItemId: string }>
+): Promise<void> {
+  logger.warn('Batch removing invalid media items from uploads table', {
+    userEmail,
+    count: invalidItems.length,
+  });
+
+  if (invalidItems.length === 0) {
+    return;
+  }
+
+  const db = getDatabase();
+
+  const transaction = db.transaction(() => {
+    const deleteStmt = db.prepare(
+      'DELETE FROM uploads WHERE user_email = ? AND drive_file_id = ? AND photos_media_item_id = ?'
+    );
+
+    for (const item of invalidItems) {
+      deleteStmt.run(userEmail, item.driveFileId, item.mediaItemId);
+    }
+  });
+
+  transaction();
+
+  logger.info('Batch invalid media items removed successfully', {
+    userEmail,
+    count: invalidItems.length,
+  });
+}
+
+/**
  * Get statistics of uploaded files for a user
  */
 export async function getUploadsStats(

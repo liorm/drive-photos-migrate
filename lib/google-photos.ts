@@ -1018,6 +1018,53 @@ export async function getAlbum({
 }
 
 /**
+ * Verify if a media item exists in Google Photos
+ * Returns true if the media item exists, false if it was deleted or is invalid
+ */
+export async function verifyMediaItemExists(
+  auth: GoogleAuthContext,
+  mediaItemId: string
+): Promise<boolean> {
+  try {
+    const { result: response } = await withGoogleAuthRetry(auth, async auth => {
+      return await fetchWithRetry(
+        `${PHOTOS_API_BASE}/mediaItems/${mediaItemId}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${auth.accessToken}`,
+          },
+        }
+      );
+    });
+
+    if (response.ok) {
+      logger.debug('Media item verified as valid', { mediaItemId });
+      return true;
+    }
+
+    if (response.status === 404) {
+      logger.warn('Media item not found (deleted or invalid)', { mediaItemId });
+      return false;
+    }
+
+    // For other errors, assume it might be valid (to avoid false positives)
+    logger.warn('Unable to verify media item, assuming valid', {
+      mediaItemId,
+      status: response.status,
+    });
+    return true;
+  } catch (error) {
+    logger.error('Error verifying media item, assuming valid', {
+      mediaItemId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    // On error, assume valid to avoid false positives
+    return true;
+  }
+}
+
+/**
  * Add media items to an album in batches
  */
 interface BatchAddMediaItemsToAlbumParams {
@@ -1030,13 +1077,15 @@ export async function batchAddMediaItemsToAlbum({
   auth,
   albumId,
   mediaItemIds,
-}: BatchAddMediaItemsToAlbumParams): Promise<void> {
+}: BatchAddMediaItemsToAlbumParams): Promise<{
+  invalidMediaItemIds: string[];
+}> {
   logger.info('Adding media items to album', {
     albumId,
     itemCount: mediaItemIds.length,
   });
 
-  // Google Photos API allows max 50 items per request
+  const invalidMediaItemIds: string[] = [];
   const BATCH_SIZE = 50;
 
   for (let i = 0; i < mediaItemIds.length; i += BATCH_SIZE) {
@@ -1048,50 +1097,139 @@ export async function batchAddMediaItemsToAlbum({
       progress: `${i + batch.length}/${mediaItemIds.length}`,
     });
 
-    await retryWithBackoff(
-      async () => {
-        const { result: response } = await withGoogleAuthRetry(
-          auth,
-          async auth => {
-            return await fetchWithRetry(
-              `${PHOTOS_API_BASE}/albums/${albumId}:batchAddMediaItems`,
-              {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${auth.accessToken}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  mediaItemIds: batch,
-                }),
-              }
+    try {
+      // Try adding the batch
+      await retryWithBackoff(
+        async () => {
+          const { result: response } = await withGoogleAuthRetry(
+            auth,
+            async auth => {
+              return await fetchWithRetry(
+                `${PHOTOS_API_BASE}/albums/${albumId}:batchAddMediaItems`,
+                {
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${auth.accessToken}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    mediaItemIds: batch,
+                  }),
+                }
+              );
+            }
+          );
+
+          if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(
+              `Failed to add media items to album: ${response.statusText} - ${errorBody}`
             );
+          }
+        },
+        {
+          maxRetries: 3,
+          onRetry: (error, attempt, delay) => {
+            logger.warn('Retrying batch add to album', {
+              albumId,
+              batchSize: batch.length,
+              attempt,
+              delay,
+              error: error.message,
+            });
+          },
+        }
+      );
+    } catch (batchError) {
+      // If batch failed, check if it's a 400 error (invalid media item)
+      const errorMessage =
+        batchError instanceof Error ? batchError.message : String(batchError);
+
+      if (
+        errorMessage.includes('400') ||
+        errorMessage.includes('INVALID_ARGUMENT')
+      ) {
+        logger.warn(
+          'Batch add failed with invalid argument, retrying individual IDs',
+          {
+            albumId,
+            batchSize: batch.length,
+            error: errorMessage,
           }
         );
 
-        if (!response.ok) {
-          throw new Error(
-            `Failed to add media items to album: ${response.statusText}`
-          );
+        // Retry each ID individually to identify invalid ones
+        for (const mediaItemId of batch) {
+          try {
+            const { result: response } = await withGoogleAuthRetry(
+              auth,
+              async auth => {
+                return await fetchWithRetry(
+                  `${PHOTOS_API_BASE}/albums/${albumId}:batchAddMediaItems`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      Authorization: `Bearer ${auth.accessToken}`,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      mediaItemIds: [mediaItemId],
+                    }),
+                  }
+                );
+              }
+            );
+
+            if (!response.ok) {
+              logger.warn('Individual media item is invalid', {
+                albumId,
+                mediaItemId,
+                status: response.status,
+              });
+              invalidMediaItemIds.push(mediaItemId);
+            } else {
+              logger.debug('Individual media item added successfully', {
+                albumId,
+                mediaItemId,
+              });
+            }
+          } catch (individualError) {
+            logger.error('Failed to add individual media item', {
+              albumId,
+              mediaItemId,
+              error:
+                individualError instanceof Error
+                  ? individualError.message
+                  : String(individualError),
+            });
+            invalidMediaItemIds.push(mediaItemId);
+          }
         }
-      },
-      {
-        maxRetries: 3,
-        onRetry: (error, attempt, delay) => {
-          logger.warn('Retrying batch add to album', {
-            albumId,
-            batchSize: batch.length,
-            attempt,
-            delay,
-            error: error.message,
-          });
-        },
+      } else {
+        // Not a 400 error, re-throw to let caller handle
+        logger.error('Batch add failed with non-400 error', {
+          albumId,
+          batchSize: batch.length,
+          error: errorMessage,
+        });
+        throw batchError;
       }
-    );
+    }
   }
 
-  logger.info('All media items added to album successfully', {
-    albumId,
-    totalItems: mediaItemIds.length,
-  });
+  if (invalidMediaItemIds.length > 0) {
+    logger.warn('Some media items were invalid and could not be added', {
+      albumId,
+      invalidCount: invalidMediaItemIds.length,
+      totalCount: mediaItemIds.length,
+      invalidIds: invalidMediaItemIds,
+    });
+  } else {
+    logger.info('All media items added to album successfully', {
+      albumId,
+      totalItems: mediaItemIds.length,
+    });
+  }
+
+  return { invalidMediaItemIds };
 }

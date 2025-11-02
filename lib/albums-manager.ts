@@ -19,7 +19,11 @@ import {
   getAllAlbums,
   getAlbum,
 } from './google-photos';
-import { isFileUploaded, getUploadedMediaItemId } from './uploads-db';
+import {
+  isFileUploaded,
+  getUploadedMediaItemId,
+  removeInvalidMediaItems,
+} from './uploads-db';
 import { createLogger } from './logger';
 import operationStatusManager, { OperationType } from './operation-status';
 import { retryWithBackoff } from './retry';
@@ -747,9 +751,28 @@ class AlbumsManager {
       'UPLOADED'
     );
 
+    // Filter out invalid media item IDs:
+    // - null/undefined
+    // - empty strings
+    // - whitespace-only strings
+    // - suspiciously short IDs (Google Photos IDs are typically 50+ characters)
     const mediaItemIds = uploadedItems
       .map(item => item.photosMediaItemId)
-      .filter((id): id is string => id !== null);
+      .filter((id): id is string => {
+        if (!id || typeof id !== 'string') return false;
+        const trimmed = id.trim();
+        if (trimmed.length === 0) return false;
+        if (trimmed.length < 20) {
+          logger.warn('Suspiciously short media item ID filtered out', {
+            userEmail,
+            albumQueueId: albumQueueItem.id,
+            id: trimmed,
+            length: trimmed.length,
+          });
+          return false;
+        }
+        return true;
+      });
 
     if (mediaItemIds.length === 0) {
       logger.warn('No media items to add to album', {
@@ -757,7 +780,7 @@ class AlbumsManager {
         albumQueueId: albumQueueItem.id,
       });
     } else {
-      // Step 11: Add all media items to the album
+      // Step 11: Add all media items to the album with retry logic for invalid IDs
 
       logger.info('Adding media items to album', {
         userEmail,
@@ -766,32 +789,210 @@ class AlbumsManager {
         itemCount: mediaItemIds.length,
       });
 
-      await retryWithBackoff(
-        async () =>
-          batchAddMediaItemsToAlbum({
-            auth,
+      const MAX_REUPLOAD_ATTEMPTS = 3;
+      let attempt = 0;
+      let currentMediaItemIds = [...mediaItemIds];
+      const allInvalidIds: string[] = [];
+
+      while (attempt < MAX_REUPLOAD_ATTEMPTS) {
+        attempt++;
+
+        logger.debug('Batch add attempt', {
+          userEmail,
+          albumQueueId: albumQueueItem.id,
+          attempt,
+          itemCount: currentMediaItemIds.length,
+        });
+
+        // Try to add media items to album
+        const { invalidMediaItemIds } = await retryWithBackoff(
+          async () =>
+            batchAddMediaItemsToAlbum({
+              auth,
+              albumId: photosAlbumId,
+              mediaItemIds: currentMediaItemIds,
+            }),
+          {
+            maxRetries: 3,
+            onRetry: (error, retryAttempt) => {
+              logger.warn('Retrying add media items to album', {
+                userEmail,
+                albumQueueId: albumQueueItem.id,
+                attempt,
+                retryAttempt,
+                error: error.message,
+              });
+            },
+          }
+        );
+
+        allInvalidIds.push(...invalidMediaItemIds);
+
+        if (invalidMediaItemIds.length === 0) {
+          // All items added successfully
+          logger.info('Media items added to album successfully', {
+            userEmail,
+            albumQueueId: albumQueueItem.id,
             albumId: photosAlbumId,
-            mediaItemIds,
-          }),
-        {
-          maxRetries: 3,
-          onRetry: (error, attempt) => {
-            logger.warn('Retrying add media items to album', {
+            itemCount: currentMediaItemIds.length,
+          });
+          break;
+        }
+
+        if (attempt >= MAX_REUPLOAD_ATTEMPTS) {
+          logger.error(
+            'Max reupload attempts reached, some items remain invalid',
+            {
               userEmail,
               albumQueueId: albumQueueItem.id,
-              attempt,
-              error: error.message,
-            });
-          },
+              invalidCount: invalidMediaItemIds.length,
+              totalAttempts: attempt,
+            }
+          );
+          break;
         }
-      );
 
-      logger.info('Media items added to album successfully', {
-        userEmail,
-        albumQueueId: albumQueueItem.id,
-        albumId: photosAlbumId,
-        itemCount: mediaItemIds.length,
-      });
+        // Step 11a: Handle invalid media items - clean up and re-upload
+
+        logger.warn('Found invalid media items, will re-upload', {
+          userEmail,
+          albumQueueId: albumQueueItem.id,
+          invalidCount: invalidMediaItemIds.length,
+          attempt,
+        });
+
+        // Map invalid media item IDs back to Drive file IDs
+        const invalidMediaItemMap = new Map<string, string>();
+        for (const item of uploadedItems) {
+          if (
+            item.photosMediaItemId &&
+            invalidMediaItemIds.includes(item.photosMediaItemId)
+          ) {
+            invalidMediaItemMap.set(item.photosMediaItemId, item.driveFileId);
+          }
+        }
+
+        // Remove invalid media items from uploads table
+        const itemsToCleanup = Array.from(invalidMediaItemMap.entries()).map(
+          ([mediaItemId, driveFileId]) => ({
+            driveFileId,
+            mediaItemId,
+          })
+        );
+
+        await removeInvalidMediaItems(userEmail, itemsToCleanup);
+
+        // Mark corresponding album_items as PENDING so they can be re-uploaded
+        const driveFileIdsToReupload = Array.from(invalidMediaItemMap.values());
+
+        logger.info('Marking album items as PENDING for re-upload', {
+          userEmail,
+          albumQueueId: albumQueueItem.id,
+          count: driveFileIdsToReupload.length,
+          attempt,
+        });
+
+        for (const driveFileId of driveFileIdsToReupload) {
+          const item = uploadedItems.find(i => i.driveFileId === driveFileId);
+          if (item) {
+            await updateAlbumItem(item.id, {
+              photosMediaItemId: null,
+              status: 'PENDING',
+            });
+          }
+        }
+
+        // Queue files for re-upload
+        logger.info('Queueing files for re-upload', {
+          userEmail,
+          albumQueueId: albumQueueItem.id,
+          fileCount: driveFileIdsToReupload.length,
+          attempt,
+        });
+
+        await uploadsManager.addToQueue({
+          userEmail,
+          auth,
+          fileIds: driveFileIdsToReupload,
+        });
+
+        // Wait for re-uploads to complete
+        logger.info('Waiting for re-uploads to complete', {
+          userEmail,
+          albumQueueId: albumQueueItem.id,
+          fileCount: driveFileIdsToReupload.length,
+          attempt,
+        });
+
+        const reuploadStartTime = Date.now();
+        const REUPLOAD_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+        const REUPLOAD_POLL_INTERVAL = 5000; // 5 seconds
+
+        while (true) {
+          if (Date.now() - reuploadStartTime > REUPLOAD_TIMEOUT) {
+            throw new Error(
+              `Re-upload timeout after ${REUPLOAD_TIMEOUT / 1000 / 60} minutes`
+            );
+          }
+
+          // Check if all items have new media item IDs
+          let allReuploaded = true;
+          const newMediaItemIds: string[] = [];
+
+          for (const driveFileId of driveFileIdsToReupload) {
+            const mediaItemId = await getUploadedMediaItemId(
+              userEmail,
+              driveFileId
+            );
+            if (mediaItemId) {
+              newMediaItemIds.push(mediaItemId);
+
+              // Update album_item with new media item ID
+              const item = uploadedItems.find(
+                i => i.driveFileId === driveFileId
+              );
+              if (item) {
+                await updateAlbumItem(item.id, {
+                  photosMediaItemId: mediaItemId,
+                  status: 'UPLOADED',
+                });
+              }
+            } else {
+              allReuploaded = false;
+            }
+          }
+
+          if (allReuploaded) {
+            logger.info('All files re-uploaded successfully', {
+              userEmail,
+              albumQueueId: albumQueueItem.id,
+              count: newMediaItemIds.length,
+              attempt,
+            });
+            currentMediaItemIds = newMediaItemIds;
+            break;
+          }
+
+          // Wait before polling again
+          await new Promise(resolve =>
+            setTimeout(resolve, REUPLOAD_POLL_INTERVAL)
+          );
+        }
+
+        // Loop will retry with new media item IDs
+      }
+
+      if (allInvalidIds.length > 0) {
+        logger.warn(
+          'Some media items could not be added to album after retries',
+          {
+            userEmail,
+            albumQueueId: albumQueueItem.id,
+            invalidCount: allInvalidIds.length,
+            totalAttempts: attempt,
+          }
+        );
+      }
     }
 
     // Step 12: Update album queue item and folder-album mapping
