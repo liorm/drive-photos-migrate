@@ -593,6 +593,248 @@ export async function downloadDriveFile({
   }
 }
 
+/**
+ * Download a Drive file to a temporary file (for large files)
+ * Uses streaming to avoid loading entire file into memory
+ */
+import fs from 'fs';
+import { pipeline } from 'stream/promises';
+import { Readable } from 'stream';
+import {
+  generateTempFilePath,
+  deleteTempFile,
+  LARGE_FILE_THRESHOLD,
+} from './temp-file-utils';
+import { TempFileDownloadResult } from '@/types/temp-file';
+
+interface DownloadDriveFileToTempParams {
+  auth: GoogleAuthContext;
+  fileId: string;
+  userEmail: string;
+  fileSize?: number;
+  operationId?: string;
+  signal?: AbortSignal;
+}
+
+export async function downloadDriveFileToTemp({
+  auth,
+  fileId,
+  userEmail,
+  fileSize,
+  operationId,
+  signal,
+}: DownloadDriveFileToTempParams): Promise<TempFileDownloadResult> {
+  logger.debug('Downloading file from Drive to temp file', {
+    fileId,
+    fileSize,
+  });
+
+  const tempFilePath = generateTempFilePath(userEmail, fileId);
+  let actualFileSize = 0;
+
+  try {
+    const response = await fetchWithRetry(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      {
+        headers: {
+          Authorization: `Bearer ${auth.accessToken}`,
+        },
+        signal,
+      },
+      {
+        maxRetries: 3,
+        onRetry: (error, attempt, delay) => {
+          logger.warn('Retrying download Drive file to temp', {
+            fileId,
+            attempt,
+            delay,
+            error: error.message,
+          });
+
+          if (operationId) {
+            operationStatusManager.retryOperation(
+              operationId,
+              `Download to temp failed: ${error.message}`,
+              attempt,
+              3
+            );
+          }
+        },
+      }
+    );
+
+    if (!response.body) {
+      throw new Error('Response body is null');
+    }
+
+    // Convert web ReadableStream to Node.js Readable
+    const webStream = response.body;
+    const nodeStream = Readable.fromWeb(webStream as never);
+
+    // Create write stream to temp file
+    const writeStream = fs.createWriteStream(tempFilePath);
+
+    // Track bytes written
+    nodeStream.on('data', (chunk: Buffer) => {
+      actualFileSize += chunk.length;
+    });
+
+    // Handle abort signal
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        nodeStream.destroy();
+        writeStream.destroy();
+        deleteTempFile(tempFilePath);
+      });
+    }
+
+    // Stream to file
+    await pipeline(nodeStream, writeStream);
+
+    logger.debug('Drive file downloaded to temp file', {
+      fileId,
+      tempFilePath,
+      size: actualFileSize,
+    });
+
+    return {
+      tempFilePath,
+      fileSize: actualFileSize || fileSize || 0,
+    };
+  } catch (error) {
+    // Clean up temp file on error
+    deleteTempFile(tempFilePath);
+
+    // Check if it's an abort error
+    const isAbort =
+      error &&
+      typeof error === 'object' &&
+      (error as Record<string, unknown>).name === 'AbortError';
+
+    if (isAbort) {
+      logger.info('Download to temp file aborted', { fileId, tempFilePath });
+      throw error;
+    }
+
+    logger.error('Error downloading Drive file to temp', error, {
+      fileId,
+      tempFilePath,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Upload bytes from a temp file (for large files)
+ * Uses streaming to avoid loading entire file into memory
+ */
+interface UploadBytesFromFileParams {
+  auth: GoogleAuthContext;
+  filePath: string;
+  fileName: string;
+  mimeType: string;
+  operationId?: string;
+  signal?: AbortSignal;
+}
+
+export async function uploadBytesFromFile({
+  auth,
+  filePath,
+  fileName,
+  mimeType: _mimeType,
+  operationId,
+  signal,
+}: UploadBytesFromFileParams): Promise<string> {
+  logger.debug('Uploading bytes from temp file to Photos API', {
+    fileName,
+    filePath,
+  });
+
+  try {
+    // Get file size for logging
+    const stats = fs.statSync(filePath);
+    const fileSize = stats.size;
+
+    // Create read stream from temp file
+    const fileStream = fs.createReadStream(filePath);
+
+    // Handle abort signal
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        fileStream.destroy();
+      });
+    }
+
+    const response = await fetchWithRetry(
+      `${PHOTOS_API_BASE}/uploads`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${auth.accessToken}`,
+          'Content-Type': 'application/octet-stream',
+          'X-Goog-Upload-File-Name': encodeURIComponent(fileName),
+          'X-Goog-Upload-Protocol': 'raw',
+        },
+        // Node.js ReadStream can be used as fetch body
+        body: fileStream as unknown as BodyInit,
+        signal,
+      },
+      {
+        maxRetries: 3,
+        onRetry: (error, attempt, delay) => {
+          logger.warn('Retrying upload bytes from file', {
+            fileName,
+            filePath,
+            attempt,
+            delay,
+            error: error.message,
+          });
+
+          if (operationId) {
+            operationStatusManager.retryOperation(
+              operationId,
+              `Upload from file failed: ${error.message}`,
+              attempt,
+              3
+            );
+          }
+        },
+      }
+    );
+
+    const uploadToken = await response.text();
+
+    logger.debug('Upload token received from temp file', {
+      fileName,
+      filePath,
+      fileSize,
+      tokenLength: uploadToken.length,
+    });
+
+    return uploadToken;
+  } catch (error) {
+    // Check if it's an abort error
+    const isAbort =
+      error &&
+      typeof error === 'object' &&
+      (error as Record<string, unknown>).name === 'AbortError';
+
+    if (isAbort) {
+      logger.info('Upload from temp file aborted', { fileName, filePath });
+      throw error;
+    }
+
+    logger.error('Error uploading bytes from temp file', error, {
+      fileName,
+      filePath,
+    });
+    throw error;
+  }
+}
+
+// Export the threshold so it can be used by other modules
+export { LARGE_FILE_THRESHOLD };
+
 // =====================
 // Album Management APIs
 // =====================

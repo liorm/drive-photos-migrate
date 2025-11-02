@@ -13,6 +13,9 @@ import {
   downloadDriveFile,
   batchCreateMediaItems,
   uploadBytes as photosUploadBytes,
+  downloadDriveFileToTemp,
+  uploadBytesFromFile,
+  LARGE_FILE_THRESHOLD,
 } from './google-photos';
 import { recordUpload } from './uploads-db';
 import { clearFileSyncStatusCache } from './sync-status';
@@ -22,6 +25,7 @@ import { retryWithBackoff } from './retry';
 import backoffController from './backoff-controller';
 import { QueueItem } from '@/types/upload-queue';
 import { UploadRateTracker } from './upload-rate-tracker';
+import { cleanAllTempFiles, deleteTempFile } from './temp-file-utils';
 
 const logger = createLogger('uploads-manager');
 
@@ -77,8 +81,11 @@ class UploadsManager {
     if (this.initialized) return;
 
     logger.info(
-      'Initializing UploadsManager - resetting stuck uploading items'
+      'Initializing UploadsManager - resetting stuck uploading items and cleaning temp files'
     );
+
+    // Clean all temp files from previous runs
+    cleanAllTempFiles();
 
     // Note: We don't have userEmail at init time, so this will be done per-user
     // on first processing request. This is intentional - we only reset for users
@@ -547,6 +554,9 @@ class UploadsManager {
             // Wait if the user is paused due to a backoff triggered elsewhere
             await backoffController.waitWhilePaused(userEmail);
 
+            // Track temp file path for cleanup
+            let tempFilePath: string | null = null;
+
             try {
               await retryWithBackoff(
                 async () => {
@@ -556,43 +566,114 @@ class UploadsManager {
                     startedAt: new Date().toISOString(),
                   });
 
-                  // Download file from Drive
-                  logger.debug('Downloading file from Drive', {
-                    userEmail,
-                    queueItemId: item.id,
-                    driveFileId: item.driveFileId,
-                    fileName: item.fileName,
-                  });
+                  // Determine if we should use temp file streaming for large files
+                  const useStreaming =
+                    item.fileSize && item.fileSize > LARGE_FILE_THRESHOLD;
 
-                  const buffer = await downloadDriveFile({
-                    auth,
-                    fileId: item.driveFileId,
-                    signal: controller.signal,
-                  });
+                  let uploadToken: string;
 
-                  logger.debug('File downloaded successfully', {
-                    userEmail,
-                    queueItemId: item.id,
-                    driveFileId: item.driveFileId,
-                    size: buffer.length,
-                  });
+                  if (useStreaming) {
+                    // Large file: stream to temp file, then upload from temp file
+                    logger.debug('Using temp file streaming for large file', {
+                      userEmail,
+                      queueItemId: item.id,
+                      driveFileId: item.driveFileId,
+                      fileName: item.fileName,
+                      fileSize: item.fileSize,
+                    });
 
-                  // Upload bytes to get upload token
-                  logger.debug('Uploading file to Photos', {
-                    userEmail,
-                    queueItemId: item.id,
-                    driveFileId: item.driveFileId,
-                    fileName: item.fileName,
-                  });
+                    // Download to temp file
+                    logger.debug('Downloading file from Drive to temp file', {
+                      userEmail,
+                      queueItemId: item.id,
+                      driveFileId: item.driveFileId,
+                      fileName: item.fileName,
+                    });
 
-                  const uploadToken = await this.uploadBytes({
-                    auth: auth,
-                    fileBuffer: buffer,
-                    fileName: item.fileName,
-                    mimeType: item.mimeType,
-                    operationId,
-                    signal: controller.signal,
-                  });
+                    const downloadResult = await downloadDriveFileToTemp({
+                      auth,
+                      fileId: item.driveFileId,
+                      userEmail,
+                      fileSize: item.fileSize,
+                      operationId,
+                      signal: controller.signal,
+                    });
+
+                    tempFilePath = downloadResult.tempFilePath;
+
+                    logger.debug('File downloaded to temp file successfully', {
+                      userEmail,
+                      queueItemId: item.id,
+                      driveFileId: item.driveFileId,
+                      tempFilePath,
+                      size: downloadResult.fileSize,
+                    });
+
+                    // Upload from temp file
+                    logger.debug('Uploading file to Photos from temp file', {
+                      userEmail,
+                      queueItemId: item.id,
+                      driveFileId: item.driveFileId,
+                      fileName: item.fileName,
+                      tempFilePath,
+                    });
+
+                    uploadToken = await uploadBytesFromFile({
+                      auth,
+                      filePath: tempFilePath,
+                      fileName: item.fileName,
+                      mimeType: item.mimeType,
+                      operationId,
+                      signal: controller.signal,
+                    });
+                  } else {
+                    // Small file: use in-memory approach
+                    logger.debug('Using in-memory approach for small file', {
+                      userEmail,
+                      queueItemId: item.id,
+                      driveFileId: item.driveFileId,
+                      fileName: item.fileName,
+                      fileSize: item.fileSize,
+                    });
+
+                    // Download file from Drive
+                    logger.debug('Downloading file from Drive', {
+                      userEmail,
+                      queueItemId: item.id,
+                      driveFileId: item.driveFileId,
+                      fileName: item.fileName,
+                    });
+
+                    const buffer = await downloadDriveFile({
+                      auth,
+                      fileId: item.driveFileId,
+                      signal: controller.signal,
+                    });
+
+                    logger.debug('File downloaded successfully', {
+                      userEmail,
+                      queueItemId: item.id,
+                      driveFileId: item.driveFileId,
+                      size: buffer.length,
+                    });
+
+                    // Upload bytes to get upload token
+                    logger.debug('Uploading file to Photos', {
+                      userEmail,
+                      queueItemId: item.id,
+                      driveFileId: item.driveFileId,
+                      fileName: item.fileName,
+                    });
+
+                    uploadToken = await this.uploadBytes({
+                      auth: auth,
+                      fileBuffer: buffer,
+                      fileName: item.fileName,
+                      mimeType: item.mimeType,
+                      operationId,
+                      signal: controller.signal,
+                    });
+                  }
 
                   logger.debug('Upload token received', {
                     userEmail,
@@ -610,6 +691,12 @@ class UploadsManager {
                   // Process batch if it reaches the batch size
                   if (pendingBatch.length >= BATCH_SIZE) {
                     await processBatch();
+                  }
+
+                  // Clean up temp file if it was used
+                  if (tempFilePath) {
+                    deleteTempFile(tempFilePath);
+                    tempFilePath = null;
                   }
                 },
                 {
@@ -646,6 +733,12 @@ class UploadsManager {
                 }
               );
             } catch (error) {
+              // Clean up temp file if it exists
+              if (tempFilePath) {
+                deleteTempFile(tempFilePath);
+                tempFilePath = null;
+              }
+
               // If the error was due to an abort, stop processing without
               // marking the item as failed (so it remains pending).
               const isAbort =
