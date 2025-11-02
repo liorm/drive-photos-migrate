@@ -777,8 +777,10 @@ export async function uploadBytesFromFile({
         },
         // Node.js ReadStream can be used as fetch body
         body: fileStream as unknown as BodyInit,
+        // Required for streaming bodies in Node.js fetch
+        duplex: 'half' as const,
         signal,
-      },
+      } as RequestInit,
       {
         maxRetries: 3,
         onRetry: (error, attempt, delay) => {

@@ -558,187 +558,268 @@ class UploadsManager {
             let tempFilePath: string | null = null;
 
             try {
-              await retryWithBackoff(
-                async () => {
-                  // Update item status to uploading
-                  await updateQueueItem(userEmail, item.id, {
-                    status: 'uploading',
-                    startedAt: new Date().toISOString(),
-                  });
+              // Update item status to uploading
+              await updateQueueItem(userEmail, item.id, {
+                status: 'uploading',
+                startedAt: new Date().toISOString(),
+              });
 
-                  // Determine if we should use temp file streaming for large files
-                  const useStreaming =
-                    item.fileSize && item.fileSize > LARGE_FILE_THRESHOLD;
+              // Determine if we should use temp file streaming for large files
+              const useStreaming =
+                item.fileSize && item.fileSize > LARGE_FILE_THRESHOLD;
 
-                  let uploadToken: string;
+              let uploadToken: string;
 
-                  if (useStreaming) {
-                    // Large file: stream to temp file, then upload from temp file
-                    logger.debug('Using temp file streaming for large file', {
-                      userEmail,
-                      queueItemId: item.id,
-                      driveFileId: item.driveFileId,
-                      fileName: item.fileName,
-                      fileSize: item.fileSize,
-                    });
+              if (useStreaming) {
+                // Large file: stream to temp file, then upload from temp file
+                logger.debug('Using temp file streaming for large file', {
+                  userEmail,
+                  queueItemId: item.id,
+                  driveFileId: item.driveFileId,
+                  fileName: item.fileName,
+                  fileSize: item.fileSize,
+                });
 
-                    // Download to temp file
-                    logger.debug('Downloading file from Drive to temp file', {
-                      userEmail,
-                      queueItemId: item.id,
-                      driveFileId: item.driveFileId,
-                      fileName: item.fileName,
-                    });
+                // Download to temp file ONCE (with retry for download failures)
+                logger.debug('Downloading file from Drive to temp file', {
+                  userEmail,
+                  queueItemId: item.id,
+                  driveFileId: item.driveFileId,
+                  fileName: item.fileName,
+                });
 
-                    const downloadResult = await downloadDriveFileToTemp({
+                const downloadResult = await retryWithBackoff(
+                  async () =>
+                    downloadDriveFileToTemp({
                       auth,
                       fileId: item.driveFileId,
                       userEmail,
                       fileSize: item.fileSize,
                       operationId,
                       signal: controller.signal,
-                    });
+                    }),
+                  {
+                    maxRetries: 3,
+                    onRetry: (error, attempt, delay) => {
+                      logger.warn('Retrying download to temp file', {
+                        userEmail,
+                        queueItemId: item.id,
+                        driveFileId: item.driveFileId,
+                        fileName: item.fileName,
+                        attempt,
+                        delay,
+                        error: error.message,
+                      });
 
-                    tempFilePath = downloadResult.tempFilePath;
+                      if (delay && delay > 0) {
+                        backoffController.pauseUserBackoff(
+                          userEmail,
+                          delay,
+                          `backoff retry download for ${item.fileName}`
+                        );
+                      }
 
-                    logger.debug('File downloaded to temp file successfully', {
-                      userEmail,
-                      queueItemId: item.id,
-                      driveFileId: item.driveFileId,
-                      tempFilePath,
-                      size: downloadResult.fileSize,
-                    });
+                      operationStatusManager.retryOperation(
+                        operationId,
+                        `Retrying download ${item.fileName}: ${error.message}`,
+                        attempt,
+                        3
+                      );
+                    },
+                  }
+                );
 
-                    // Upload from temp file
-                    logger.debug('Uploading file to Photos from temp file', {
-                      userEmail,
-                      queueItemId: item.id,
-                      driveFileId: item.driveFileId,
-                      fileName: item.fileName,
-                      tempFilePath,
-                    });
+                tempFilePath = downloadResult.tempFilePath;
 
-                    uploadToken = await uploadBytesFromFile({
+                logger.debug('File downloaded to temp file successfully', {
+                  userEmail,
+                  queueItemId: item.id,
+                  driveFileId: item.driveFileId,
+                  tempFilePath,
+                  size: downloadResult.fileSize,
+                });
+
+                // Upload from temp file (with retry, reuses same temp file)
+                logger.debug('Uploading file to Photos from temp file', {
+                  userEmail,
+                  queueItemId: item.id,
+                  driveFileId: item.driveFileId,
+                  fileName: item.fileName,
+                  tempFilePath,
+                });
+
+                uploadToken = await retryWithBackoff(
+                  async () =>
+                    uploadBytesFromFile({
                       auth,
-                      filePath: tempFilePath,
+                      filePath: tempFilePath!,
                       fileName: item.fileName,
                       mimeType: item.mimeType,
                       operationId,
                       signal: controller.signal,
-                    });
-                  } else {
-                    // Small file: use in-memory approach
-                    logger.debug('Using in-memory approach for small file', {
-                      userEmail,
-                      queueItemId: item.id,
-                      driveFileId: item.driveFileId,
-                      fileName: item.fileName,
-                      fileSize: item.fileSize,
-                    });
+                    }),
+                  {
+                    maxRetries: 3,
+                    onRetry: (error, attempt, delay) => {
+                      logger.warn('Retrying upload from temp file', {
+                        userEmail,
+                        queueItemId: item.id,
+                        driveFileId: item.driveFileId,
+                        fileName: item.fileName,
+                        tempFilePath,
+                        attempt,
+                        delay,
+                        error: error.message,
+                      });
 
-                    // Download file from Drive
-                    logger.debug('Downloading file from Drive', {
-                      userEmail,
-                      queueItemId: item.id,
-                      driveFileId: item.driveFileId,
-                      fileName: item.fileName,
-                    });
+                      if (delay && delay > 0) {
+                        backoffController.pauseUserBackoff(
+                          userEmail,
+                          delay,
+                          `backoff retry upload for ${item.fileName}`
+                        );
+                      }
 
-                    const buffer = await downloadDriveFile({
+                      operationStatusManager.retryOperation(
+                        operationId,
+                        `Retrying upload ${item.fileName}: ${error.message}`,
+                        attempt,
+                        3
+                      );
+                    },
+                  }
+                );
+              } else {
+                // Small file: use in-memory approach
+                logger.debug('Using in-memory approach for small file', {
+                  userEmail,
+                  queueItemId: item.id,
+                  driveFileId: item.driveFileId,
+                  fileName: item.fileName,
+                  fileSize: item.fileSize,
+                });
+
+                // Download file from Drive ONCE (with retry for download failures)
+                logger.debug('Downloading file from Drive', {
+                  userEmail,
+                  queueItemId: item.id,
+                  driveFileId: item.driveFileId,
+                  fileName: item.fileName,
+                });
+
+                const buffer = await retryWithBackoff(
+                  async () =>
+                    downloadDriveFile({
                       auth,
                       fileId: item.driveFileId,
                       signal: controller.signal,
-                    });
+                    }),
+                  {
+                    maxRetries: 3,
+                    onRetry: (error, attempt, delay) => {
+                      logger.warn('Retrying download from Drive', {
+                        userEmail,
+                        queueItemId: item.id,
+                        driveFileId: item.driveFileId,
+                        fileName: item.fileName,
+                        attempt,
+                        delay,
+                        error: error.message,
+                      });
 
-                    logger.debug('File downloaded successfully', {
-                      userEmail,
-                      queueItemId: item.id,
-                      driveFileId: item.driveFileId,
-                      size: buffer.length,
-                    });
+                      if (delay && delay > 0) {
+                        backoffController.pauseUserBackoff(
+                          userEmail,
+                          delay,
+                          `backoff retry download for ${item.fileName}`
+                        );
+                      }
 
-                    // Upload bytes to get upload token
-                    logger.debug('Uploading file to Photos', {
-                      userEmail,
-                      queueItemId: item.id,
-                      driveFileId: item.driveFileId,
-                      fileName: item.fileName,
-                    });
+                      operationStatusManager.retryOperation(
+                        operationId,
+                        `Retrying download ${item.fileName}: ${error.message}`,
+                        attempt,
+                        3
+                      );
+                    },
+                  }
+                );
 
-                    uploadToken = await this.uploadBytes({
+                logger.debug('File downloaded successfully', {
+                  userEmail,
+                  queueItemId: item.id,
+                  driveFileId: item.driveFileId,
+                  size: buffer.length,
+                });
+
+                // Upload bytes to get upload token (with retry, reuses buffer)
+                logger.debug('Uploading file to Photos', {
+                  userEmail,
+                  queueItemId: item.id,
+                  driveFileId: item.driveFileId,
+                  fileName: item.fileName,
+                });
+
+                uploadToken = await retryWithBackoff(
+                  async () =>
+                    this.uploadBytes({
                       auth: auth,
                       fileBuffer: buffer,
                       fileName: item.fileName,
                       mimeType: item.mimeType,
                       operationId,
                       signal: controller.signal,
-                    });
-                  }
-
-                  logger.debug('Upload token received', {
-                    userEmail,
-                    queueItemId: item.id,
-                    driveFileId: item.driveFileId,
-                    fileName: item.fileName,
-                  });
-
-                  // Add to pending batch
-                  pendingBatch.push({
-                    queueItem: item,
-                    uploadToken,
-                  });
-
-                  // Process batch if it reaches the batch size
-                  if (pendingBatch.length >= BATCH_SIZE) {
-                    await processBatch();
-                  }
-
-                  // Clean up temp file if it was used
-                  if (tempFilePath) {
-                    deleteTempFile(tempFilePath);
-                    tempFilePath = null;
-                  }
-                },
-                {
-                  maxRetries: 3,
-                  onRetry: (error, attempt, delay) => {
-                    logger.warn('Retrying queue item', {
-                      userEmail,
-                      queueItemId: item.id,
-                      driveFileId: item.driveFileId,
-                      fileName: item.fileName,
-                      attempt,
-                      delay,
-                      error: error.message,
-                    });
-
-                    // If the error is a rate-limit (delay > 0) we'll pause other
-                    // processing for this user for at least the delay window.
-                    if (delay && delay > 0) {
-                      backoffController.pauseUserBackoff(
+                    }),
+                  {
+                    maxRetries: 3,
+                    onRetry: (error, attempt, delay) => {
+                      logger.warn('Retrying upload to Photos', {
                         userEmail,
+                        queueItemId: item.id,
+                        driveFileId: item.driveFileId,
+                        fileName: item.fileName,
+                        attempt,
                         delay,
-                        `backoff retry for ${item.fileName}`
-                      );
-                    }
+                        error: error.message,
+                      });
 
-                    // Update operation status if tracking
-                    operationStatusManager.retryOperation(
-                      operationId,
-                      `Retrying ${item.fileName}: ${error.message}`,
-                      attempt,
-                      3
-                    );
-                  },
-                }
-              );
-            } catch (error) {
-              // Clean up temp file if it exists
-              if (tempFilePath) {
-                deleteTempFile(tempFilePath);
-                tempFilePath = null;
+                      if (delay && delay > 0) {
+                        backoffController.pauseUserBackoff(
+                          userEmail,
+                          delay,
+                          `backoff retry upload for ${item.fileName}`
+                        );
+                      }
+
+                      operationStatusManager.retryOperation(
+                        operationId,
+                        `Retrying upload ${item.fileName}: ${error.message}`,
+                        attempt,
+                        3
+                      );
+                    },
+                  }
+                );
               }
 
+              logger.debug('Upload token received', {
+                userEmail,
+                queueItemId: item.id,
+                driveFileId: item.driveFileId,
+                fileName: item.fileName,
+              });
+
+              // Add to pending batch
+              pendingBatch.push({
+                queueItem: item,
+                uploadToken,
+              });
+
+              // Process batch if it reaches the batch size
+              if (pendingBatch.length >= BATCH_SIZE) {
+                await processBatch();
+              }
+            } catch (error) {
               // If the error was due to an abort, stop processing without
               // marking the item as failed (so it remains pending).
               const isAbort =
@@ -787,6 +868,12 @@ class UploadsManager {
                 Math.min(completedSoFar, pendingItems.length),
                 pendingItems.length
               );
+            } finally {
+              // Always clean up temp file if it was created
+              if (tempFilePath) {
+                deleteTempFile(tempFilePath);
+                tempFilePath = null;
+              }
             }
           }
         })();
