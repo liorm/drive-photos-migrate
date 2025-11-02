@@ -205,9 +205,10 @@ class UploadsManager {
 
               fileName = fileMetadata.name;
               mimeType = fileMetadata.mimeType;
-              fileSize = fileMetadata.size
-                ? parseInt(fileMetadata.size)
-                : undefined;
+              fileSize =
+                fileMetadata.size !== undefined && fileMetadata.size !== null
+                  ? parseInt(String(fileMetadata.size))
+                  : undefined;
 
               logger.debug('File metadata fetched from Drive API', {
                 userEmail,
@@ -555,25 +556,20 @@ class UploadsManager {
             // Wait if the user is paused due to a backoff triggered elsewhere
             await backoffController.waitWhilePaused(userEmail);
 
-            // Track temp file path for cleanup
-            let tempFilePath: string | null = null;
-
-            try {
-              // Update item status to uploading
-              await updateQueueItem(userEmail, item.id, {
-                status: 'uploading',
-                startedAt: new Date().toISOString(),
+            // Skip files with zero size - mark as completed without uploading
+            // Check this BEFORE marking as 'uploading' to avoid any processing
+            // Note: Check for both 0 and undefined, as fileSize might be undefined
+            // for 0-byte files due to previous bug in metadata parsing
+            if (item.fileSize === 0 || item.fileSize === undefined) {
+              logger.info('Skipping zero-sized or unknown-size file', {
+                userEmail,
+                queueItemId: item.id,
+                driveFileId: item.driveFileId,
+                fileName: item.fileName,
+                fileSize: item.fileSize,
               });
 
-              // Skip files with zero size - mark as completed without uploading
-              if (item.fileSize === 0) {
-                logger.info('Skipping zero-sized file', {
-                  userEmail,
-                  queueItemId: item.id,
-                  driveFileId: item.driveFileId,
-                  fileName: item.fileName,
-                });
-
+              try {
                 // Mark file as ignored in the ignored_files table
                 ignoreFile(userEmail, item.driveFileId, 'Empty file (0 bytes)');
 
@@ -599,9 +595,32 @@ class UploadsManager {
                   driveFileId: item.driveFileId,
                   fileName: item.fileName,
                 });
-
-                continue;
+              } catch (error) {
+                logger.error(
+                  'Error marking zero-sized file as ignored',
+                  error,
+                  {
+                    userEmail,
+                    queueItemId: item.id,
+                    driveFileId: item.driveFileId,
+                    fileName: item.fileName,
+                  }
+                );
+                // Continue processing even if marking as ignored fails
               }
+
+              continue;
+            }
+
+            // Track temp file path for cleanup
+            let tempFilePath: string | null = null;
+
+            try {
+              // Update item status to uploading
+              await updateQueueItem(userEmail, item.id, {
+                status: 'uploading',
+                startedAt: new Date().toISOString(),
+              });
 
               // Determine if we should use temp file streaming for large files
               const useStreaming =
@@ -625,6 +644,7 @@ class UploadsManager {
                   queueItemId: item.id,
                   driveFileId: item.driveFileId,
                   fileName: item.fileName,
+                  fileSize: item.fileSize,
                 });
 
                 const downloadResult = await retryWithBackoff(
@@ -744,6 +764,7 @@ class UploadsManager {
                   queueItemId: item.id,
                   driveFileId: item.driveFileId,
                   fileName: item.fileName,
+                  fileSize: item.fileSize,
                 });
 
                 const buffer = await retryWithBackoff(
