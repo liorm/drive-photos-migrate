@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Clock,
   EyeOff,
+  ExternalLink,
 } from 'lucide-react';
 import { LazyImage } from '@/components/ui/LazyImage';
 
@@ -28,6 +29,7 @@ export function FileItem({
   const isVideo = file.mimeType.startsWith('video/');
   const isSynced = file.syncStatus === 'synced';
   const isIgnored = file.isIgnored || false;
+  const hasPhotosUrl = !!file.photosUrl;
 
   // Format file size
   const formatSize = (bytes?: string) => {
@@ -82,7 +84,21 @@ export function FileItem({
         )}
 
         {/* Synced badge on thumbnail */}
-        {isSynced && !isIgnored && (
+        {isSynced && !isIgnored && hasPhotosUrl && (
+          <a
+            href={file.photosUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="absolute bottom-1 left-1 flex items-center gap-1 rounded-full bg-green-600 px-2 py-0.5 text-xs font-semibold text-white shadow-md transition-colors hover:bg-green-700"
+            title="View in Google Photos"
+          >
+            <CheckCircle2 className="h-3 w-3" />
+            Synced
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
+        {isSynced && !isIgnored && !hasPhotosUrl && (
           <div className="absolute bottom-1 left-1 flex items-center gap-1 rounded-full bg-green-600 px-2 py-0.5 text-xs font-semibold text-white shadow-md">
             <CheckCircle2 className="h-3 w-3" />
             Synced

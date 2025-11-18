@@ -130,9 +130,13 @@ async function handleGET(request: NextRequest) {
   const fileIds = cachedData.files.map(f => f.id);
   const uploadRecords = await getUploadRecords(userEmail, fileIds);
 
-  const fileSyncStatuses = new Map();
+  const fileSyncStatuses = new Map<string, string>();
+  const filePhotosUrls = new Map<string, string | undefined>();
   for (const [fileId, uploadRecord] of uploadRecords.entries()) {
     fileSyncStatuses.set(fileId, uploadRecord !== null ? 'synced' : 'unsynced');
+    if (uploadRecord?.productUrl) {
+      filePhotosUrls.set(fileId, uploadRecord.productUrl);
+    }
   }
 
   // Get queued file IDs
@@ -190,6 +194,7 @@ async function handleGET(request: NextRequest) {
       ...file,
       syncStatus: fileSyncStatuses.get(file.id) || 'unsynced',
       isIgnored: ignoredFileIds.has(file.id),
+      photosUrl: filePhotosUrls.get(file.id),
     })),
     folders: cachedData.folders.map(folder => ({
       ...folder,

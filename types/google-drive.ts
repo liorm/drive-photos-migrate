@@ -13,6 +13,7 @@ export interface DriveFile {
   parents?: string[];
   syncStatus?: SyncStatus;
   isIgnored?: boolean;
+  photosUrl?: string;
 }
 
 export interface DriveFolder {

@@ -21,6 +21,10 @@ const MIGRATIONS: Array<{ name: string; migrate: (db: Database) => void }> = [
     name: 'add-ignored-files-table',
     migrate: addIgnoredFilesTable,
   },
+  {
+    name: 'add-product-url-to-uploads',
+    migrate: addProductUrlToUploads,
+  },
 ];
 
 function addFileSizeToUploads(db: Database): void {
@@ -246,5 +250,20 @@ function addIgnoredFilesTable(db: Database): void {
     logger.info('ignored_files table created successfully');
   } else {
     logger.info('ignored_files table already exists, skipping');
+  }
+}
+
+function addProductUrlToUploads(db: Database): void {
+  logger.info('Running migration: add-product-url-to-uploads');
+
+  const columns = db.pragma('table_info(uploads)') as Array<{ name: string }>;
+  const hasProductUrlColumn = columns.some(col => col.name === 'product_url');
+
+  if (!hasProductUrlColumn) {
+    logger.info('Adding product_url column to uploads table');
+    db.exec('ALTER TABLE uploads ADD COLUMN product_url TEXT');
+    logger.info('product_url column added successfully');
+  } else {
+    logger.info('product_url column already exists, skipping');
   }
 }

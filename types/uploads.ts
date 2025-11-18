@@ -7,6 +7,7 @@
  */
 export interface UploadRecord {
   photosMediaItemId: string;
+  productUrl?: string;
   uploadedAt: string;
   fileName: string;
   mimeType: string;

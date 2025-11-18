@@ -426,7 +426,8 @@ class UploadsManager {
                 result.mediaItemId,
                 queueItem.fileName,
                 queueItem.mimeType,
-                queueItem.fileSize
+                queueItem.fileSize,
+                result.productUrl
               );
 
               // Clear sync status cache for this file

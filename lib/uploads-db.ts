@@ -41,13 +41,14 @@ export async function getUploadRecord(
 
   const result = db
     .prepare(
-      `SELECT photos_media_item_id, uploaded_at, file_name, mime_type, file_size
+      `SELECT photos_media_item_id, product_url, uploaded_at, file_name, mime_type, file_size
        FROM uploads
        WHERE user_email = ? AND drive_file_id = ?`
     )
     .get(userEmail, driveFileId) as
     | {
         photos_media_item_id: string;
+        product_url: string | null;
         uploaded_at: string;
         file_name: string;
         mime_type: string;
@@ -64,6 +65,7 @@ export async function getUploadRecord(
 
   return {
     photosMediaItemId: result.photos_media_item_id,
+    productUrl: result.product_url || undefined,
     uploadedAt: result.uploaded_at,
     fileName: result.file_name,
     mimeType: result.mime_type,
@@ -104,13 +106,14 @@ export async function getUploadRecords(
   const placeholders = driveFileIds.map(() => '?').join(',');
   const results = db
     .prepare(
-      `SELECT drive_file_id, photos_media_item_id, uploaded_at, file_name, mime_type, file_size
+      `SELECT drive_file_id, photos_media_item_id, product_url, uploaded_at, file_name, mime_type, file_size
        FROM uploads
        WHERE user_email = ? AND drive_file_id IN (${placeholders})`
     )
     .all(userEmail, ...driveFileIds) as Array<{
     drive_file_id: string;
     photos_media_item_id: string;
+    product_url: string | null;
     uploaded_at: string;
     file_name: string;
     mime_type: string;
@@ -128,6 +131,7 @@ export async function getUploadRecords(
   for (const row of results) {
     recordMap.set(row.drive_file_id, {
       photosMediaItemId: row.photos_media_item_id,
+      productUrl: row.product_url || undefined,
       uploadedAt: row.uploaded_at,
       fileName: row.file_name,
       mimeType: row.mime_type,
@@ -156,7 +160,8 @@ export async function recordUpload(
   photosMediaItemId: string,
   fileName: string,
   mimeType: string,
-  fileSize?: number
+  fileSize?: number,
+  productUrl?: string
 ): Promise<void> {
   logger.info('Recording upload', {
     userEmail,
@@ -164,20 +169,22 @@ export async function recordUpload(
     photosMediaItemId,
     fileName,
     fileSize,
+    productUrl,
   });
 
   const db = getDatabase();
 
   db.prepare(
-    `INSERT INTO uploads (user_email, drive_file_id, photos_media_item_id, uploaded_at, file_name, mime_type, file_size)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO uploads (user_email, drive_file_id, photos_media_item_id, uploaded_at, file_name, mime_type, file_size, product_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(user_email, drive_file_id)
      DO UPDATE SET
        photos_media_item_id = excluded.photos_media_item_id,
        uploaded_at = excluded.uploaded_at,
        file_name = excluded.file_name,
        mime_type = excluded.mime_type,
-       file_size = excluded.file_size`
+       file_size = excluded.file_size,
+       product_url = excluded.product_url`
   ).run(
     userEmail,
     driveFileId,
@@ -185,7 +192,8 @@ export async function recordUpload(
     new Date().toISOString(),
     fileName,
     mimeType,
-    fileSize || null
+    fileSize || null,
+    productUrl || null
   );
 
   logger.info('Upload recorded successfully', {
@@ -206,6 +214,7 @@ export async function recordUploads(
     fileName: string;
     mimeType: string;
     fileSize?: number;
+    productUrl?: string;
   }>
 ): Promise<void> {
   logger.info('Recording batch uploads', {
@@ -222,15 +231,16 @@ export async function recordUploads(
 
   const transaction = db.transaction(() => {
     const insert = db.prepare(
-      `INSERT INTO uploads (user_email, drive_file_id, photos_media_item_id, uploaded_at, file_name, mime_type, file_size)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO uploads (user_email, drive_file_id, photos_media_item_id, uploaded_at, file_name, mime_type, file_size, product_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_email, drive_file_id)
        DO UPDATE SET
          photos_media_item_id = excluded.photos_media_item_id,
          uploaded_at = excluded.uploaded_at,
          file_name = excluded.file_name,
          mime_type = excluded.mime_type,
-         file_size = excluded.file_size`
+         file_size = excluded.file_size,
+         product_url = excluded.product_url`
     );
 
     for (const upload of uploads) {
@@ -241,7 +251,8 @@ export async function recordUploads(
         uploadedAt,
         upload.fileName,
         upload.mimeType,
-        upload.fileSize || null
+        upload.fileSize || null,
+        upload.productUrl || null
       );
     }
   });

@@ -107,6 +107,7 @@ export async function batchCreateMediaItems({
   Array<{
     success: boolean;
     mediaItemId?: string;
+    productUrl?: string;
     fileName: string;
     error?: string;
   }>
@@ -147,11 +148,13 @@ export async function batchCreateMediaItems({
       logger.debug('Media item created successfully', {
         fileName,
         mediaItemId: mediaItemResult.mediaItem.id,
+        productUrl: mediaItemResult.mediaItem.productUrl,
       });
 
       return {
         success: true,
         mediaItemId: mediaItemResult.mediaItem.id,
+        productUrl: mediaItemResult.mediaItem.productUrl,
         fileName,
       };
     } else {
@@ -202,6 +205,7 @@ export async function batchUploadFiles({
   Array<{
     driveFileId: string;
     photosMediaItemId?: string;
+    productUrl?: string;
     success: boolean;
     error?: string;
   }>
@@ -230,6 +234,7 @@ export async function batchUploadFiles({
       const results: Array<{
         driveFileId: string;
         photosMediaItemId?: string;
+        productUrl?: string;
         success: boolean;
         error?: string;
       }> = [];
@@ -275,6 +280,7 @@ export async function batchUploadFiles({
               results.push({
                 driveFileId: batchItem.driveFileId,
                 photosMediaItemId: result.mediaItemId,
+                productUrl: result.productUrl,
                 success: true,
               });
             } else {

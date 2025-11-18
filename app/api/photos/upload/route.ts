@@ -179,6 +179,7 @@ async function handlePOST(request: NextRequest) {
         mimeType:
           filesToUpload.find(f => f.driveFileId === r.driveFileId)?.mimeType ||
           'unknown',
+        productUrl: r.productUrl,
       }))
     );
 
