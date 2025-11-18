@@ -25,6 +25,11 @@ import {
   removeInvalidMediaItems,
 } from './uploads-db';
 import { getIgnoredFileIds } from './ignored-files-db';
+import {
+  getCompletedQueueItem,
+  getQueueItemByFileId,
+  requeueItemsByFileIds,
+} from './upload-queue-db';
 import { createLogger } from './logger';
 import operationStatusManager, { OperationType } from './operation-status';
 import { retryWithBackoff } from './retry';
@@ -585,8 +590,41 @@ class AlbumsManager {
           filesToUpload.push(item.driveFileId);
         }
       } else {
-        // Not uploaded, queue for upload
+        // Not in uploads table - check if it's an orphaned completed queue item
+        // (completed but recordUpload was never called)
+        const completedQueueItem = await getCompletedQueueItem(
+          userEmail,
+          item.driveFileId
+        );
+
+        if (completedQueueItem) {
+          // Orphaned completed item - needs to be re-queued
+          logger.info('Found orphaned completed queue item, will re-queue', {
+            userEmail,
+            albumQueueId: albumQueueItem.id,
+            driveFileId: item.driveFileId,
+            queueItemId: completedQueueItem.id,
+          });
+        }
+
+        // Queue for upload (will be re-queued if orphaned, or added fresh if not in queue)
         filesToUpload.push(item.driveFileId);
+      }
+    }
+
+    // Re-queue any orphaned items (completed/failed but not in uploads table) before adding new ones
+    if (filesToUpload.length > 0) {
+      const requeuedCount = await requeueItemsByFileIds(
+        userEmail,
+        filesToUpload
+      );
+
+      if (requeuedCount > 0) {
+        logger.info('Re-queued orphaned items', {
+          userEmail,
+          albumQueueId: albumQueueItem.id,
+          requeuedCount,
+        });
       }
     }
 
@@ -660,11 +698,67 @@ class AlbumsManager {
           'PENDING'
         );
 
-        // Check if any of the pending items have been uploaded
+        // Check the queue status for each pending album item
         let updatedCount = 0;
+        let failedCount = 0;
+        let stillProcessing = 0;
+
         for (const item of pendingItems) {
-          const isUploaded = await isFileUploaded(userEmail, item.driveFileId);
-          if (isUploaded) {
+          // First check the queue_items table to see the upload status
+          const queueItem = await getQueueItemByFileId(
+            userEmail,
+            item.driveFileId
+          );
+
+          if (!queueItem) {
+            // Not in queue - check uploads table directly (might have been uploaded previously)
+            const isUploaded = await isFileUploaded(
+              userEmail,
+              item.driveFileId
+            );
+            if (isUploaded) {
+              const mediaItemId = await getUploadedMediaItemId(
+                userEmail,
+                item.driveFileId
+              );
+              if (mediaItemId) {
+                await updateAlbumItem(item.id, {
+                  photosMediaItemId: mediaItemId,
+                  status: 'UPLOADED',
+                });
+                updatedCount++;
+              }
+            }
+            continue;
+          }
+
+          // Check queue item status
+          if (
+            queueItem.status === 'pending' ||
+            queueItem.status === 'uploading'
+          ) {
+            // Still being processed, continue waiting
+            stillProcessing++;
+            continue;
+          }
+
+          if (queueItem.status === 'failed') {
+            // Upload failed - mark album item as failed
+            logger.warn('Queue item upload failed', {
+              userEmail,
+              albumQueueId: albumQueueItem.id,
+              driveFileId: item.driveFileId,
+              error: queueItem.error,
+            });
+            await updateAlbumItem(item.id, {
+              status: 'FAILED',
+            });
+            failedCount++;
+            continue;
+          }
+
+          if (queueItem.status === 'completed') {
+            // Completed - check uploads table for media item ID
             const mediaItemId = await getUploadedMediaItemId(
               userEmail,
               item.driveFileId
@@ -675,8 +769,26 @@ class AlbumsManager {
                 status: 'UPLOADED',
               });
               updatedCount++;
+            } else {
+              // Completed but no media item ID - this is the orphaned case
+              // The item was already re-queued earlier, so this shouldn't happen
+              // but log it for debugging
+              logger.warn('Queue item completed but no media item ID found', {
+                userEmail,
+                albumQueueId: albumQueueItem.id,
+                driveFileId: item.driveFileId,
+                queueItemId: queueItem.id,
+              });
             }
           }
+        }
+
+        if (failedCount > 0) {
+          logger.warn('Some uploads failed', {
+            userEmail,
+            albumQueueId: albumQueueItem.id,
+            failedCount,
+          });
         }
 
         if (updatedCount > 0) {

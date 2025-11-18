@@ -1159,11 +1159,19 @@ export async function batchAddMediaItemsToAlbum({
         );
 
         // Retry each ID individually to identify invalid ones
+        // Use retry with delay to handle timing issues where media items aren't immediately available
+        const INDIVIDUAL_RETRY_DELAYS = [1000, 1000]; // Increasing delays in ms
+
         for (const mediaItemId of batch) {
-          try {
-            const { result: response } = await withGoogleAuthRetry(
-              auth,
-              async auth => {
+          let succeeded = false;
+
+          for (
+            let retryAttempt = 0;
+            retryAttempt <= INDIVIDUAL_RETRY_DELAYS.length;
+            retryAttempt++
+          ) {
+            try {
+              await withGoogleAuthRetry(auth, async auth => {
                 return await fetchWithRetry(
                   `${PHOTOS_API_BASE}/albums/${albumId}:batchAddMediaItems`,
                   {
@@ -1177,33 +1185,72 @@ export async function batchAddMediaItemsToAlbum({
                     }),
                   }
                 );
-              }
-            );
+              });
 
-            logger.debug('Individual media item added successfully', {
+              logger.debug('Individual media item added successfully', {
                 albumId,
                 mediaItemId,
+                retryAttempt,
               });
-          } catch (individualError) {
-            // Extract detailed error info if available (e.g. from ExtendedError)
-            let errorDetails: unknown = undefined;
-            if (
-              individualError &&
-              typeof individualError === 'object' &&
-              'details' in individualError
-            ) {
-              errorDetails = (individualError as any).details;
-            }
-
-            logger.error('Failed to add individual media item', {
-              albumId,
-              mediaItemId,
-              error:
+              succeeded = true;
+              break;
+            } catch (individualError) {
+              const errorMsg =
                 individualError instanceof Error
                   ? individualError.message
-                  : String(individualError),
-              details: errorDetails,
-            });
+                  : String(individualError);
+
+              // Check if this is an invalid argument error (timing issue)
+              const isInvalidArgument =
+                errorMsg.includes('400') ||
+                errorMsg.includes('INVALID_ARGUMENT') ||
+                errorMsg.includes('invalid media item');
+
+              // If we have retries left and it's a timing-related error, wait and retry
+              if (
+                isInvalidArgument &&
+                retryAttempt < INDIVIDUAL_RETRY_DELAYS.length
+              ) {
+                const delay = INDIVIDUAL_RETRY_DELAYS[retryAttempt];
+                logger.warn(
+                  'Media item not yet available, waiting before retry',
+                  {
+                    albumId,
+                    mediaItemId,
+                    retryAttempt: retryAttempt + 1,
+                    delayMs: delay,
+                  }
+                );
+                await new Promise(resolve => setTimeout(resolve, delay));
+                continue;
+              }
+
+              // Extract detailed error info if available (e.g. from ExtendedError)
+              let errorDetails: unknown = undefined;
+              if (
+                individualError &&
+                typeof individualError === 'object' &&
+                'details' in individualError
+              ) {
+                errorDetails = (individualError as { details: unknown })
+                  .details;
+              }
+
+              logger.error(
+                'Failed to add individual media item after retries',
+                {
+                  albumId,
+                  mediaItemId,
+                  error: errorMsg,
+                  details: errorDetails,
+                  totalAttempts: retryAttempt + 1,
+                }
+              );
+              break;
+            }
+          }
+
+          if (!succeeded) {
             invalidMediaItemIds.push(mediaItemId);
           }
         }

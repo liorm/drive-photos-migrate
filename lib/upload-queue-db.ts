@@ -599,3 +599,109 @@ export async function requeueFailedItems(userEmail: string): Promise<number> {
 
   return requeuedCount;
 }
+
+/**
+ * Get queue item by drive file ID (any status).
+ * Returns the queue item if it exists, null otherwise.
+ */
+export async function getQueueItemByFileId(
+  userEmail: string,
+  driveFileId: string
+): Promise<QueueItem | null> {
+  const db = getDatabase();
+
+  const row = db
+    .prepare(
+      `SELECT id, user_email, drive_file_id, file_name, mime_type, file_size, status,
+              added_at, started_at, completed_at, error, photos_media_item_id
+       FROM queue_items
+       WHERE user_email = ? AND drive_file_id = ?`
+    )
+    .get(userEmail, driveFileId) as
+    | {
+        id: string;
+        user_email: string;
+        drive_file_id: string;
+        file_name: string;
+        mime_type: string;
+        file_size: number | null;
+        status: QueueItemStatus;
+        added_at: string;
+        started_at: string | null;
+        completed_at: string | null;
+        error: string | null;
+        photos_media_item_id: string | null;
+      }
+    | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    driveFileId: row.drive_file_id,
+    fileName: row.file_name,
+    mimeType: row.mime_type,
+    fileSize: row.file_size || undefined,
+    status: row.status,
+    addedAt: row.added_at,
+    startedAt: row.started_at || undefined,
+    completedAt: row.completed_at || undefined,
+    error: row.error || undefined,
+    photosMediaItemId: row.photos_media_item_id || undefined,
+  };
+}
+
+/**
+ * Get completed queue item by drive file ID.
+ * Returns the queue item if it exists with status 'completed', null otherwise.
+ */
+export async function getCompletedQueueItem(
+  userEmail: string,
+  driveFileId: string
+): Promise<QueueItem | null> {
+  const item = await getQueueItemByFileId(userEmail, driveFileId);
+  return item?.status === 'completed' ? item : null;
+}
+
+/**
+ * Re-queue specific items by their drive file IDs.
+ * This resets their status to 'pending' so they can be re-processed.
+ * Works for any status (completed, failed, etc.) - similar to requeueFailedItems but for specific files.
+ * Returns the number of items re-queued.
+ */
+export async function requeueItemsByFileIds(
+  userEmail: string,
+  driveFileIds: string[]
+): Promise<number> {
+  if (driveFileIds.length === 0) {
+    return 0;
+  }
+
+  logger.info('Re-queuing items by file IDs', {
+    userEmail,
+    fileCount: driveFileIds.length,
+  });
+
+  const db = getDatabase();
+  const placeholders = driveFileIds.map(() => '?').join(', ');
+
+  const result = db
+    .prepare(
+      `UPDATE queue_items
+       SET status = 'pending', started_at = NULL, completed_at = NULL, error = NULL, photos_media_item_id = NULL
+       WHERE user_email = ? AND drive_file_id IN (${placeholders}) AND status IN ('completed', 'failed')`
+    )
+    .run(userEmail, ...driveFileIds);
+
+  const requeuedCount = result.changes || 0;
+
+  if (requeuedCount > 0) {
+    logger.info('Re-queued items', { userEmail, requeuedCount });
+  } else {
+    logger.debug('No items to re-queue', { userEmail });
+  }
+
+  return requeuedCount;
+}
