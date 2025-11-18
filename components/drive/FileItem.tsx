@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { DriveFile } from '@/types/google-drive';
 import {
   FileImage,
@@ -9,6 +10,7 @@ import {
   Clock,
   EyeOff,
   ExternalLink,
+  Loader2,
 } from 'lucide-react';
 import { LazyImage } from '@/components/ui/LazyImage';
 
@@ -25,11 +27,46 @@ export function FileItem({
   isQueued,
   onToggleSelect,
 }: FileItemProps) {
+  const [isLoadingPhotosUrl, setIsLoadingPhotosUrl] = useState(false);
+
   const isImage = file.mimeType.startsWith('image/');
   const isVideo = file.mimeType.startsWith('video/');
   const isSynced = file.syncStatus === 'synced';
   const isIgnored = file.isIgnored || false;
   const hasPhotosUrl = !!file.photosUrl;
+
+  // Fetch productUrl from API and open in new tab
+  const handleOpenInPhotos = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsLoadingPhotosUrl(true);
+
+    try {
+      const response = await fetch(
+        `/api/photos/media-item?driveFileId=${encodeURIComponent(file.id)}`
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to fetch productUrl:', error);
+        alert(
+          error.error || 'Failed to fetch Google Photos URL. Please try again.'
+        );
+        return;
+      }
+
+      const data = await response.json();
+      if (data.productUrl) {
+        window.open(data.productUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        alert('Could not find the photo in Google Photos.');
+      }
+    } catch (error) {
+      console.error('Error fetching productUrl:', error);
+      alert('Failed to fetch Google Photos URL. Please try again.');
+    } finally {
+      setIsLoadingPhotosUrl(false);
+    }
+  };
 
   // Format file size
   const formatSize = (bytes?: string) => {
@@ -99,10 +136,20 @@ export function FileItem({
           </a>
         )}
         {isSynced && !isIgnored && !hasPhotosUrl && (
-          <div className="absolute bottom-1 left-1 flex items-center gap-1 rounded-full bg-green-600 px-2 py-0.5 text-xs font-semibold text-white shadow-md">
-            <CheckCircle2 className="h-3 w-3" />
+          <button
+            onClick={handleOpenInPhotos}
+            disabled={isLoadingPhotosUrl}
+            className="absolute bottom-1 left-1 flex items-center gap-1 rounded-full bg-green-600 px-2 py-0.5 text-xs font-semibold text-white shadow-md transition-colors hover:bg-green-700 disabled:opacity-75"
+            title="View in Google Photos"
+          >
+            {isLoadingPhotosUrl ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <CheckCircle2 className="h-3 w-3" />
+            )}
             Synced
-          </div>
+            <ExternalLink className="h-3 w-3" />
+          </button>
         )}
 
         {/* Ignored badge on thumbnail */}
