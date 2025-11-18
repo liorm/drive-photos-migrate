@@ -43,3 +43,4 @@ next-env.d.ts
 # database
 db.json
 /data
+data_backup_*.tar.gz

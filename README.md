@@ -110,6 +110,13 @@ Additional tuning environment variables
 
    Open [http://localhost:3000](https://www.google.com/search?q=http://localhost:3000) in your browser.
 
+6. **Backup Data:**
+   To create a backup of the `data` directory, run:
+   ```bash
+   npm run backup
+   ```
+   This will create a `data_backup_YYYYMMDD_HHMMSS.tar.gz` file in the root directory.
+
 ## **Development Roadmap**
 
 See [PLAN.md](PLAN.md) for the detailed development roadmap.
