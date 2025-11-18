@@ -1180,20 +1180,21 @@ export async function batchAddMediaItemsToAlbum({
               }
             );
 
-            if (!response.ok) {
-              logger.warn('Individual media item is invalid', {
-                albumId,
-                mediaItemId,
-                status: response.status,
-              });
-              invalidMediaItemIds.push(mediaItemId);
-            } else {
-              logger.debug('Individual media item added successfully', {
+            logger.debug('Individual media item added successfully', {
                 albumId,
                 mediaItemId,
               });
-            }
           } catch (individualError) {
+            // Extract detailed error info if available (e.g. from ExtendedError)
+            let errorDetails: unknown = undefined;
+            if (
+              individualError &&
+              typeof individualError === 'object' &&
+              'details' in individualError
+            ) {
+              errorDetails = (individualError as any).details;
+            }
+
             logger.error('Failed to add individual media item', {
               albumId,
               mediaItemId,
@@ -1201,6 +1202,7 @@ export async function batchAddMediaItemsToAlbum({
                 individualError instanceof Error
                   ? individualError.message
                   : String(individualError),
+              details: errorDetails,
             });
             invalidMediaItemIds.push(mediaItemId);
           }

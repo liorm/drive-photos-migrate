@@ -788,7 +788,8 @@ class AlbumsManager {
     // - empty strings
     // - whitespace-only strings
     // - suspiciously short IDs (Google Photos IDs are typically 50+ characters)
-    const mediaItemIds = uploadedItems
+    // Filter out invalid media item IDs and deduplicate
+    const rawMediaItemIds = uploadedItems
       .map(item => item.photosMediaItemId)
       .filter((id): id is string => {
         if (!id || typeof id !== 'string') return false;
@@ -805,6 +806,9 @@ class AlbumsManager {
         }
         return true;
       });
+
+    // Deduplicate IDs to prevent 400 Bad Request errors
+    const mediaItemIds = Array.from(new Set(rawMediaItemIds));
 
     if (mediaItemIds.length === 0) {
       logger.warn('No media items to add to album', {
