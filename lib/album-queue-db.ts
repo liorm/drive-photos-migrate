@@ -610,7 +610,7 @@ export async function getAlbumItems(
 
   const rows = db
     .prepare(
-      `SELECT id, album_queue_id, drive_file_id, photos_media_item_id, status, added_at
+      `SELECT id, album_queue_id, drive_file_id, photos_media_item_id, status, added_at, error_message
        FROM album_items
        WHERE album_queue_id = ?
        ORDER BY added_at ASC`
@@ -622,6 +622,7 @@ export async function getAlbumItems(
     photos_media_item_id: string | null;
     status: AlbumItemStatus;
     added_at: string;
+    error_message: string | null;
   }>;
 
   const items: AlbumItem[] = rows.map(row => ({
@@ -631,6 +632,7 @@ export async function getAlbumItems(
     photosMediaItemId: row.photos_media_item_id,
     status: row.status,
     addedAt: row.added_at,
+    errorMessage: row.error_message,
   }));
 
   return items;
@@ -655,6 +657,10 @@ export async function updateAlbumItem(
   if (update.status !== undefined) {
     updateFields.push('status = ?');
     values.push(update.status);
+  }
+  if (update.errorMessage !== undefined) {
+    updateFields.push('error_message = ?');
+    values.push(update.errorMessage);
   }
 
   if (updateFields.length === 0) {
@@ -747,7 +753,7 @@ export async function getAlbumItemsByStatus(
 
   const rows = db
     .prepare(
-      `SELECT id, album_queue_id, drive_file_id, photos_media_item_id, status, added_at
+      `SELECT id, album_queue_id, drive_file_id, photos_media_item_id, status, added_at, error_message
        FROM album_items
        WHERE album_queue_id = ? AND status = ?
        ORDER BY added_at ASC`
@@ -759,6 +765,7 @@ export async function getAlbumItemsByStatus(
     photos_media_item_id: string | null;
     status: AlbumItemStatus;
     added_at: string;
+    error_message: string | null;
   }>;
 
   const items: AlbumItem[] = rows.map(row => ({
@@ -768,6 +775,7 @@ export async function getAlbumItemsByStatus(
     photosMediaItemId: row.photos_media_item_id,
     status: row.status,
     addedAt: row.added_at,
+    errorMessage: row.error_message,
   }));
 
   return items;
@@ -1087,4 +1095,130 @@ export async function failInProgressAlbumItems(
   }
 
   return failedCount;
+}
+
+// ==========================
+// Failed Add Items functions
+// ==========================
+
+/**
+ * Extended album item with folder context for display
+ */
+export interface FailedAddItemWithContext {
+  id: string;
+  albumQueueId: string;
+  driveFileId: string;
+  photosMediaItemId: string | null;
+  errorMessage: string | null;
+  addedAt: string;
+  folderName: string;
+  driveFolderId: string;
+}
+
+/**
+ * Get all FAILED_ADD album items for a user with folder context
+ */
+export async function getFailedAddAlbumItems(
+  userEmail: string
+): Promise<FailedAddItemWithContext[]> {
+  logger.info('Getting FAILED_ADD album items', { userEmail });
+
+  const db = getDatabase();
+
+  const rows = db
+    .prepare(
+      `SELECT ai.id, ai.album_queue_id, ai.drive_file_id, ai.photos_media_item_id,
+              ai.error_message, ai.added_at, aq.folder_name, aq.drive_folder_id
+       FROM album_items ai
+       JOIN album_queue aq ON ai.album_queue_id = aq.id
+       WHERE aq.user_email = ? AND ai.status = 'FAILED_ADD'
+       ORDER BY ai.added_at DESC`
+    )
+    .all(userEmail) as Array<{
+    id: string;
+    album_queue_id: string;
+    drive_file_id: string;
+    photos_media_item_id: string | null;
+    error_message: string | null;
+    added_at: string;
+    folder_name: string;
+    drive_folder_id: string;
+  }>;
+
+  const items: FailedAddItemWithContext[] = rows.map(row => ({
+    id: row.id,
+    albumQueueId: row.album_queue_id,
+    driveFileId: row.drive_file_id,
+    photosMediaItemId: row.photos_media_item_id,
+    errorMessage: row.error_message,
+    addedAt: row.added_at,
+    folderName: row.folder_name,
+    driveFolderId: row.drive_folder_id,
+  }));
+
+  logger.info('Retrieved FAILED_ADD album items', {
+    userEmail,
+    count: items.length,
+  });
+
+  return items;
+}
+
+/**
+ * Delete specific album items by ID
+ */
+export async function deleteAlbumItems(itemIds: string[]): Promise<number> {
+  if (itemIds.length === 0) {
+    return 0;
+  }
+
+  logger.info('Deleting album items', { count: itemIds.length });
+
+  const db = getDatabase();
+
+  const placeholders = itemIds.map(() => '?').join(',');
+
+  const result = db
+    .prepare(`DELETE FROM album_items WHERE id IN (${placeholders})`)
+    .run(...itemIds);
+
+  const deletedCount = result.changes;
+
+  logger.info('Deleted album items', { deletedCount });
+
+  return deletedCount;
+}
+
+/**
+ * Clear upload records for specific drive file IDs
+ * This allows the files to be re-uploaded from scratch
+ */
+export async function clearUploadRecordsForDriveFiles(
+  userEmail: string,
+  driveFileIds: string[]
+): Promise<number> {
+  if (driveFileIds.length === 0) {
+    return 0;
+  }
+
+  logger.info('Clearing upload records for drive files', {
+    userEmail,
+    count: driveFileIds.length,
+  });
+
+  const db = getDatabase();
+
+  const placeholders = driveFileIds.map(() => '?').join(',');
+
+  const result = db
+    .prepare(
+      `DELETE FROM uploads WHERE user_email = ? AND drive_file_id IN (${placeholders})`
+    )
+    .run(userEmail, ...driveFileIds);
+
+  const deletedCount = result.changes;
+
+  logger.info('Cleared upload records', { userEmail, deletedCount });
+
+  return deletedCount;
 }

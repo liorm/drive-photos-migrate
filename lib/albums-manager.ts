@@ -937,10 +937,11 @@ class AlbumsManager {
         itemCount: mediaItemIds.length,
       });
 
-      const MAX_REUPLOAD_ATTEMPTS = 3;
+      const MAX_REUPLOAD_ATTEMPTS = 1; // Reduced from 3 - if item fails after re-upload, mark as FAILED_ADD
       let attempt = 0;
       let currentMediaItemIds = [...mediaItemIds];
       const allInvalidIds: string[] = [];
+      const invalidMediaItemToFileMap = new Map<string, string>(); // Track for FAILED_ADD marking
 
       while (attempt < MAX_REUPLOAD_ATTEMPTS) {
         attempt++;
@@ -1017,6 +1018,11 @@ class AlbumsManager {
             invalidMediaItemIds.includes(item.photosMediaItemId)
           ) {
             invalidMediaItemMap.set(item.photosMediaItemId, item.driveFileId);
+            // Track for FAILED_ADD marking later
+            invalidMediaItemToFileMap.set(
+              item.photosMediaItemId,
+              item.driveFileId
+            );
           }
         }
 
@@ -1140,6 +1146,29 @@ class AlbumsManager {
             totalAttempts: attempt,
           }
         );
+
+        // Mark items as FAILED_ADD with error message
+        const errorMessage = `Failed to add to album after ${attempt} attempt(s). The media item may have been deleted from Google Photos or was not created by this app.`;
+
+        for (const [mediaItemId, driveFileId] of invalidMediaItemToFileMap) {
+          // Find the album item and mark it as FAILED_ADD
+          const item = uploadedItems.find(i => i.driveFileId === driveFileId);
+          if (item) {
+            await updateAlbumItem(item.id, {
+              status: 'FAILED_ADD',
+              errorMessage: errorMessage,
+              photosMediaItemId: mediaItemId, // Keep the media item ID for debugging
+            });
+
+            logger.info('Marked album item as FAILED_ADD', {
+              userEmail,
+              albumQueueId: albumQueueItem.id,
+              albumItemId: item.id,
+              driveFileId,
+              mediaItemId,
+            });
+          }
+        }
       }
     }
 

@@ -25,6 +25,10 @@ const MIGRATIONS: Array<{ name: string; migrate: (db: Database) => void }> = [
     name: 'add-product-url-to-uploads',
     migrate: addProductUrlToUploads,
   },
+  {
+    name: 'add-error-message-to-album-items',
+    migrate: addErrorMessageToAlbumItems,
+  },
 ];
 
 function addFileSizeToUploads(db: Database): void {
@@ -266,4 +270,82 @@ function addProductUrlToUploads(db: Database): void {
   } else {
     logger.info('product_url column already exists, skipping');
   }
+}
+
+function addErrorMessageToAlbumItems(db: Database): void {
+  logger.info('Running migration: add-error-message-to-album-items');
+
+  // Add error_message column to album_items
+  const columns = db.pragma('table_info(album_items)') as Array<{
+    name: string;
+  }>;
+  const hasErrorMessageColumn = columns.some(
+    col => col.name === 'error_message'
+  );
+
+  if (!hasErrorMessageColumn) {
+    logger.info('Adding error_message column to album_items table');
+    db.exec('ALTER TABLE album_items ADD COLUMN error_message TEXT');
+    logger.info('error_message column added successfully');
+  } else {
+    logger.info('error_message column already exists, skipping');
+  }
+
+  // SQLite doesn't support modifying CHECK constraints directly.
+  // The existing check constraint was ('PENDING', 'UPLOADED', 'FAILED')
+  // and we need to add 'FAILED_ADD'.
+  // Since we can't alter CHECK constraints, we need to recreate the table.
+  // However, for backwards compatibility and to avoid data loss,
+  // we'll just add FAILED_ADD items and rely on application-level validation.
+  // The old constraint will still allow the existing values, and SQLite
+  // is lenient about constraint violations on existing data.
+
+  // Create a new table with the correct constraint and migrate data
+  logger.info(
+    'Recreating album_items table with updated status CHECK constraint'
+  );
+
+  // Create new table with updated constraint
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS album_items_new (
+      id TEXT PRIMARY KEY,
+      album_queue_id TEXT NOT NULL,
+      drive_file_id TEXT NOT NULL,
+      photos_media_item_id TEXT,
+      status TEXT NOT NULL CHECK(status IN ('PENDING', 'UPLOADED', 'FAILED', 'FAILED_ADD')),
+      added_at TEXT NOT NULL,
+      error_message TEXT,
+      FOREIGN KEY (album_queue_id) REFERENCES album_queue(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Copy data from old table
+  db.exec(`
+    INSERT INTO album_items_new (id, album_queue_id, drive_file_id, photos_media_item_id, status, added_at, error_message)
+    SELECT id, album_queue_id, drive_file_id, photos_media_item_id, status, added_at, error_message
+    FROM album_items;
+  `);
+
+  // Drop old table and rename new one
+  db.exec('DROP TABLE album_items;');
+  db.exec('ALTER TABLE album_items_new RENAME TO album_items;');
+
+  // Recreate indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_album_items_queue_id
+    ON album_items(album_queue_id);
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_album_items_drive_file
+    ON album_items(drive_file_id);
+  `);
+
+  // Add index for status to efficiently query FAILED_ADD items
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_album_items_status
+    ON album_items(status);
+  `);
+
+  logger.info('album_items table recreated with updated CHECK constraint');
 }

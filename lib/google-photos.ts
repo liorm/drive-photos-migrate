@@ -1166,7 +1166,7 @@ export async function batchAddMediaItemsToAlbum({
 
         // Retry each ID individually to identify invalid ones
         // Use retry with delay to handle timing issues where media items aren't immediately available
-        const INDIVIDUAL_RETRY_DELAYS = [1000, 1000]; // Increasing delays in ms
+        const INDIVIDUAL_RETRY_DELAYS = [500]; // Single retry with 500ms delay
 
         for (const mediaItemId of batch) {
           let succeeded = false;

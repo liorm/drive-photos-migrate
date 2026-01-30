@@ -21,8 +21,12 @@ export type AlbumQueueMode = 'CREATE' | 'UPDATE';
 
 /**
  * Status of an album item (file)
+ * - PENDING: Waiting to be uploaded
+ * - UPLOADED: Successfully uploaded to Google Photos
+ * - FAILED: Failed to upload
+ * - FAILED_ADD: Uploaded successfully but failed to add to album
  */
-export type AlbumItemStatus = 'PENDING' | 'UPLOADED' | 'FAILED';
+export type AlbumItemStatus = 'PENDING' | 'UPLOADED' | 'FAILED' | 'FAILED_ADD';
 
 /**
  * A single item in the album queue
@@ -54,6 +58,7 @@ export interface AlbumItem {
   photosMediaItemId: string | null;
   status: AlbumItemStatus;
   addedAt: string; // ISO timestamp
+  errorMessage: string | null; // Error details if FAILED_ADD
 }
 
 /**

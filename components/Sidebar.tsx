@@ -11,6 +11,7 @@ import {
   Bell,
   Loader2,
   Image as ImageIcon,
+  AlertTriangle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -24,6 +25,7 @@ const menuItems = [
   { name: 'Browse', href: '/drive', icon: FolderOpen },
   { name: 'Upload Queue', href: '/queue', icon: ListOrdered },
   { name: 'Albums', href: '/albums', icon: ImageIcon },
+  { name: 'Failed Items', href: '/albums/failed-items', icon: AlertTriangle },
 ];
 
 function DockedOperations() {
