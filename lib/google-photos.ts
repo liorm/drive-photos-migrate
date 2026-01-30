@@ -847,6 +847,18 @@ export { LARGE_FILE_THRESHOLD };
 // Album Management APIs
 // =====================
 
+// In-memory cache for listAlbums
+const ALBUM_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+// Map<AccessToken, Map<CacheKey, { timestamp: number, data: any }>>
+const albumListCache = new Map<string, Map<string, { timestamp: number; data: any }>>();
+
+function invalidateAlbumCache(accessToken: string) {
+  if (albumListCache.has(accessToken)) {
+    logger.debug('Invalidating album list cache');
+    albumListCache.delete(accessToken);
+  }
+}
+
 /**
  * Google Photos Album type
  */
@@ -916,6 +928,22 @@ export async function listAlbums({
 export async function getAllAlbums(
   auth: GoogleAuthContext
 ): Promise<GooglePhotosAlbum[]> {
+  // Check cache
+  const cacheKey = 'ALL_ALBUMS';
+  const userCache = albumListCache.get(auth.accessToken);
+
+  if (userCache) {
+    const cached = userCache.get(cacheKey);
+    if (cached) {
+      if (Date.now() - cached.timestamp < ALBUM_CACHE_TTL) {
+        logger.debug('Returning cached all albums list');
+        return cached.data as GooglePhotosAlbum[];
+      } else {
+        userCache.delete(cacheKey);
+      }
+    }
+  }
+
   logger.info('Fetching all Google Photos albums');
 
   const allAlbums: GooglePhotosAlbum[] = [];
@@ -934,6 +962,14 @@ export async function getAllAlbums(
 
   logger.info('Fetched all Google Photos albums', { count: allAlbums.length });
 
+  // Update cache
+  let targetUserCache = albumListCache.get(auth.accessToken);
+  if (!targetUserCache) {
+    targetUserCache = new Map();
+    albumListCache.set(auth.accessToken, targetUserCache);
+  }
+  targetUserCache.set(cacheKey, { timestamp: Date.now(), data: allAlbums });
+
   return allAlbums;
 }
 
@@ -950,6 +986,10 @@ export async function createAlbum({
   title,
 }: CreateAlbumParams): Promise<GooglePhotosAlbum> {
   logger.info('Creating Google Photos album', { title });
+
+  // Invalidate cache before creating (or after? usually after to reflect new state)
+  // We do it before/during just in case, but definitely the result changes the list.
+  invalidateAlbumCache(auth.accessToken);
 
   const { result: response } = await withGoogleAuthRetry(auth, async auth => {
     return await fetchWithRetry(`${PHOTOS_API_BASE}/albums`, {
@@ -1090,6 +1130,9 @@ export async function batchAddMediaItemsToAlbum({
     albumId,
     itemCount: mediaItemIds.length,
   });
+
+  // Invalidate cache as album metadata (mediaItemsCount, cover) will change
+  invalidateAlbumCache(auth.accessToken);
 
   const invalidMediaItemIds: string[] = [];
   const BATCH_SIZE = 50;
